@@ -49,9 +49,19 @@ export const depositRequests = pgTable("deposit_requests", {
   reviewedAt:       timestamp("reviewed_at"),
 });
 
+export const liveTraders = pgTable("live_traders", {
+  id:           serial("id").primaryKey(),
+  email:        text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  fullName:     text("full_name").notNull(),
+  balance:      real("balance").notNull().default(0),
+  createdAt:    timestamp("created_at").defaultNow(),
+});
+
 export const insertForexPositionSchema = createInsertSchema(forexPositions).omit({ id: true, openedAt: true });
 export type InsertForexPosition = z.infer<typeof insertForexPositionSchema>;
 export type ForexPosition     = typeof forexPositions.$inferSelect;
 export type ForexAccount      = typeof forexAccounts.$inferSelect;
 export type ForexClosedTrade  = typeof forexClosedTrades.$inferSelect;
 export type DepositRequest    = typeof depositRequests.$inferSelect;
+export type LiveTrader        = typeof liveTraders.$inferSelect;

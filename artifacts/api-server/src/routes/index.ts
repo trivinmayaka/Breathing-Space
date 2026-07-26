@@ -4,6 +4,7 @@ import forexRouter from "./forex";
 import adminRouter from "./admin";
 import realRouter from "./real";
 import depositsRouter from "./deposits";
+import liveRouter from "./live";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(forexRouter);
 router.use(adminRouter);
 router.use(realRouter);
 router.use(depositsRouter);
+router.use(liveRouter);
 
 export default router;

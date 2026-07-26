@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { eq, desc } from "drizzle-orm";
-import { db, depositRequests, forexAccounts } from "@workspace/db";
+import { db, depositRequests, forexAccounts, liveTraders } from "@workspace/db";
 import { adminSessions } from "../lib/admin-sessions";
 import type { Request, Response, NextFunction } from "express";
 
@@ -64,17 +64,30 @@ router.post("/admin/deposits/:id/approve", requireAdmin, async (req, res) => {
   if (!dep) return void res.status(404).json({ error: "Not found" });
   if (dep.status !== "pending") return void res.status(409).json({ error: "Already reviewed" });
 
-  // Credit the trader's account
-  const [account] = await db
-    .select()
-    .from(forexAccounts)
-    .where(eq(forexAccounts.sessionId, dep.sessionId));
-
-  if (account) {
-    await db
-      .update(forexAccounts)
-      .set({ balance: account.balance + dep.amount })
+  // Credit the correct account — live trader or demo session
+  if (dep.sessionId.startsWith("live-")) {
+    const traderId = parseInt(dep.sessionId.slice(5), 10);
+    if (!isNaN(traderId)) {
+      const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, traderId));
+      if (trader) {
+        await db
+          .update(liveTraders)
+          .set({ balance: parseFloat((trader.balance + dep.amount).toFixed(2)) })
+          .where(eq(liveTraders.id, traderId));
+      }
+    }
+  } else {
+    const [account] = await db
+      .select()
+      .from(forexAccounts)
       .where(eq(forexAccounts.sessionId, dep.sessionId));
+
+    if (account) {
+      await db
+        .update(forexAccounts)
+        .set({ balance: account.balance + dep.amount })
+        .where(eq(forexAccounts.sessionId, dep.sessionId));
+    }
   }
 
   await db

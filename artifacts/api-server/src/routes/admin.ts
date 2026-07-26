@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
-import { eq, count, sum, gt } from "drizzle-orm";
-import { db, forexAccounts, forexPositions, forexClosedTrades } from "@workspace/db";
+import { eq, count, sum, gt, desc } from "drizzle-orm";
+import { db, forexAccounts, forexPositions, forexClosedTrades, liveTraders, depositRequests } from "@workspace/db";
 import { adminSessions } from "../lib/admin-sessions";
 import type { Request, Response, NextFunction } from "express";
 
@@ -168,6 +168,70 @@ router.delete("/admin/accounts/:id", requireAdmin, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "admin/delete error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── GET /api/admin/live-traders ───────────────────────────────────────────────
+router.get("/admin/live-traders", requireAdmin, async (req, res) => {
+  try {
+    const traders = await db.select().from(liveTraders).orderBy(desc(liveTraders.createdAt));
+    const enriched = await Promise.all(traders.map(async (t) => {
+      const sid = `live-${t.id}`;
+      const [posRow]   = await db.select({ c: count() }).from(forexPositions).where(eq(forexPositions.sessionId, sid));
+      const [tradeRow] = await db.select({ c: count(), pnl: sum(forexClosedTrades.pnl) }).from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid));
+      const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid)).where(gt(forexClosedTrades.pnl, 0));
+      const [depRow]   = await db.select({ c: count() }).from(depositRequests).where(eq(depositRequests.sessionId, sid)).where(eq(depositRequests.status, "pending"));
+      const totalTrades = Number(tradeRow?.c ?? 0);
+      const wins        = Number(winRow?.c ?? 0);
+      return {
+        id: t.id, email: t.email, fullName: t.fullName, balance: t.balance,
+        createdAt: t.createdAt,
+        openPositions:  Number(posRow?.c ?? 0),
+        totalTrades,
+        netPnl:         parseFloat(Number(tradeRow?.pnl ?? 0).toFixed(2)),
+        winRate:        totalTrades > 0 ? parseFloat((wins / totalTrades * 100).toFixed(1)) : 0,
+        pendingDeposits: Number(depRow?.c ?? 0),
+      };
+    }));
+    res.json(enriched);
+  } catch (err) {
+    req.log.error({ err }, "admin/live-traders error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── PATCH /api/admin/live-traders/:id/balance ─────────────────────────────────
+router.patch("/admin/live-traders/:id/balance", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { balance } = req.body as { balance?: number };
+    if (typeof balance !== "number" || balance < 0 || balance > 10_000_000) {
+      return void res.status(400).json({ error: "balance must be 0–10,000,000" });
+    }
+    const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, id));
+    if (!trader) return void res.status(404).json({ error: "Trader not found" });
+    await db.update(liveTraders).set({ balance }).where(eq(liveTraders.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/live-traders balance error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── DELETE /api/admin/live-traders/:id ────────────────────────────────────────
+router.delete("/admin/live-traders/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, id));
+    if (!trader) return void res.status(404).json({ error: "Trader not found" });
+    const sid = `live-${id}`;
+    await db.delete(forexPositions).where(eq(forexPositions.sessionId, sid));
+    await db.delete(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid));
+    await db.delete(liveTraders).where(eq(liveTraders.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/live-traders delete error");
     res.status(500).json({ error: "Failed" });
   }
 });

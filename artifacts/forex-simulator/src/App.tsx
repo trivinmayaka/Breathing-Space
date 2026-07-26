@@ -5,6 +5,8 @@ import AdminLogin from './pages/AdminLogin';
 import AdminDashboard from './pages/AdminDashboard';
 import { Terminal } from './pages/Terminal';
 import { OwnerTerminal } from './pages/OwnerTerminal';
+import LiveAuth from './pages/LiveAuth';
+import { LiveTerminal } from './pages/LiveTerminal';
 
 const BRAND = 'TrivinFX';
 const BRAND_SUB = 'Pro';
@@ -628,18 +630,19 @@ function AdminHub({ onDashboard, onRealAccount, onLogout }: {
 }
 
 // ─── Root App ─────────────────────────────────────────────────────────────────
-type View = 'landing' | 'demo-dash' | 'admin-login' | 'admin-hub' | 'admin-dash' | 'real-account';
+type View = 'landing' | 'demo-dash' | 'admin-login' | 'admin-hub' | 'admin-dash' | 'real-account' | 'live-auth' | 'live-dash';
 
 export default function App() {
   const [view, setView] = useState<View>(() => {
     if (localStorage.getItem('admin_auth') === '1') return 'admin-hub';
     if (localStorage.getItem('fx_demo_auth') === '1') return 'demo-dash';
+    if (localStorage.getItem('fx_live_auth') === '1') return 'live-dash';
     return 'landing';
   });
 
   // Control body overflow: allow scroll on landing, hide on terminals
   useEffect(() => {
-    const terminals = ['demo-dash', 'real-account'];
+    const terminals = ['demo-dash', 'real-account', 'live-dash'];
     document.body.style.overflow = terminals.includes(view) ? 'hidden' : 'auto';
     return () => { document.body.style.overflow = ''; };
   }, [view]);
@@ -652,11 +655,19 @@ export default function App() {
     fetch('/api/admin/logout', { method: 'POST' }).catch(() => {});
     setView('landing');
   }
+  function liveLogin() { localStorage.setItem('fx_live_auth', '1'); setView('live-dash'); }
+  function liveLogout() {
+    localStorage.removeItem('fx_live_auth');
+    fetch('/api/live/logout', { method: 'POST' }).catch(() => {});
+    setView('landing');
+  }
 
   return (
     <>
-      {view === 'landing'      && <LandingPage onDemo={demoLogin} onReal={() => setView('admin-login')} />}
+      {view === 'landing'      && <LandingPage onDemo={demoLogin} onReal={() => setView('live-auth')} />}
       {view === 'demo-dash'    && <Terminal onLogout={demoLogout} />}
+      {view === 'live-auth'    && <LiveAuth onLogin={liveLogin} onBack={() => setView('landing')} />}
+      {view === 'live-dash'    && <LiveTerminal onLogout={liveLogout} />}
       {view === 'admin-login'  && <AdminLogin onLogin={adminLogin} onBack={() => setView('landing')} />}
       {view === 'admin-hub'    && <AdminHub onDashboard={() => setView('admin-dash')} onRealAccount={() => setView('real-account')} onLogout={adminLogout} />}
       {view === 'admin-dash'   && <AdminDashboard onLogout={adminLogout} onBack={() => setView('admin-hub')} />}
