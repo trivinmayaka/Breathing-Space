@@ -3,20 +3,21 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Forex Demo Trading Simulator API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: forex
+    description: Forex demo trading
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +25,255 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /forex/prices:
+    get:
+      operationId: getForexPrices
+      tags: [forex]
+      summary: Get all simulated forex prices
+      responses:
+        "200":
+          description: Price snapshot for all pairs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PriceSnapshot"
+
+  /forex/candles/{pair}:
+    get:
+      operationId: getForexCandles
+      tags: [forex]
+      summary: Get candlestick data for a pair
+      parameters:
+        - name: pair
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Currency pair slug e.g. EUR-USD
+      responses:
+        "200":
+          description: Array of OHLCV candles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Candle"
+
+  /forex/account:
+    get:
+      operationId: getForexAccount
+      tags: [forex]
+      summary: Get account info and open positions
+      responses:
+        "200":
+          description: Account summary with positions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Account"
+
+  /forex/orders:
+    post:
+      operationId: createForexOrder
+      tags: [forex]
+      summary: Place a market order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrderInput"
+      responses:
+        "201":
+          description: Order executed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TradeResult"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /forex/positions/{id}:
+    delete:
+      operationId: closeForexPosition
+      tags: [forex]
+      summary: Close an open position
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Position closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloseResult"
+        "404":
+          description: Position not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiError"
+
+  /forex/history:
+    get:
+      operationId: getForexHistory
+      tags: [forex]
+      summary: Get closed trade history
+      responses:
+        "200":
+          description: List of closed trades
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ClosedTrade"
+
+  /forex/account/reset:
+    post:
+      operationId: resetForexAccount
+      tags: [forex]
+      summary: Reset demo account to $10,000
+      responses:
+        "200":
+          description: Account reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ResetResult"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    PriceData:
+      type: object
+      required: [bid, ask, mid, spreadPips, changePct, direction, dec, pip, group]
+      properties:
+        bid:        { type: number }
+        ask:        { type: number }
+        mid:        { type: number }
+        spreadPips: { type: number }
+        changePct:  { type: number }
+        direction:  { type: string }
+        dec:        { type: number }
+        pip:        { type: number }
+        group:      { type: string }
+
+    PriceSnapshot:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/PriceData"
+
+    Candle:
+      type: object
+      required: [time, open, high, low, close, volume]
+      properties:
+        time:   { type: number }
+        open:   { type: number }
+        high:   { type: number }
+        low:    { type: number }
+        close:  { type: number }
+        volume: { type: number }
+
+    Position:
+      type: object
+      required: [id, pair, action, lots, openPrice, currentPrice, pnl, openedAt, dec]
+      properties:
+        id:           { type: integer }
+        pair:         { type: string }
+        action:       { type: string }
+        lots:         { type: number }
+        openPrice:    { type: number }
+        currentPrice: { type: number }
+        pnl:          { type: number }
+        sl:           { type: ["number", "null"] }
+        tp:           { type: ["number", "null"] }
+        openedAt:     { type: string }
+        dec:          { type: number }
+
+    Account:
+      type: object
+      required: [balance, equity, floatingPnl, marginUsed, freeMargin, marginLevel, totalTrades, winRate, positions]
+      properties:
+        balance:      { type: number }
+        equity:       { type: number }
+        floatingPnl:  { type: number }
+        marginUsed:   { type: number }
+        freeMargin:   { type: number }
+        marginLevel:  { type: number }
+        totalTrades:  { type: number }
+        winRate:      { type: number }
+        positions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Position"
+
+    ClosedTrade:
+      type: object
+      required: [id, pair, action, lots, openPrice, closePrice, pnl, openedAt, closedAt]
+      properties:
+        id:         { type: integer }
+        pair:       { type: string }
+        action:     { type: string }
+        lots:       { type: number }
+        openPrice:  { type: number }
+        closePrice: { type: number }
+        pnl:        { type: number }
+        openedAt:   { type: string }
+        closedAt:   { type: string }
+
+    OrderInput:
+      type: object
+      required: [pair, action, lots]
+      properties:
+        pair:   { type: string }
+        action: { type: string }
+        lots:   { type: number }
+        sl:     { type: ["number", "null"] }
+        tp:     { type: ["number", "null"] }
+
+    TradeResult:
+      type: object
+      required: [ok, price, pair, action, lots]
+      properties:
+        ok:     { type: boolean }
+        price:  { type: number }
+        pair:   { type: string }
+        action: { type: string }
+        lots:   { type: number }
+
+    CloseResult:
+      type: object
+      required: [ok, pnl, newBalance]
+      properties:
+        ok:         { type: boolean }
+        pnl:        { type: number }
+        newBalance: { type: number }
+
+    ResetResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+
+    ApiError:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }

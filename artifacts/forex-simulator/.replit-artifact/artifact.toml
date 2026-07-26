@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "TrivinFX Pro"
+version = "1.0.0"
+id = "artifacts/forex-simulator"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18376
+
+[services.development]
+run = "pnpm --filter @workspace/forex-simulator run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/forex-simulator", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/forex-simulator/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18376"
+BASE_PATH = "/"

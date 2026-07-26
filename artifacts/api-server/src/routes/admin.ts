@@ -1,0 +1,175 @@
+import { Router } from "express";
+import { randomUUID } from "crypto";
+import { eq, count, sum, gt } from "drizzle-orm";
+import { db, forexAccounts, forexPositions, forexClosedTrades } from "@workspace/db";
+import { adminSessions } from "../lib/admin-sessions";
+import type { Request, Response, NextFunction } from "express";
+
+const router = Router();
+
+// ── Admin auth middleware ─────────────────────────────────────────────────────
+function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  const token = (req.cookies as Record<string, string>)?.adminSession;
+  if (!token || !adminSessions.has(token)) {
+    return void res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
+
+// ── POST /api/admin/login ─────────────────────────────────────────────────────
+router.post("/admin/login", (req, res) => {
+  const { password } = req.body as { password?: string };
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminPassword) {
+    return void res.status(503).json({
+      error: "Admin access not configured. Set the ADMIN_PASSWORD secret in your Replit project.",
+    });
+  }
+  if (!password || password !== adminPassword) {
+    return void res.status(401).json({ error: "Incorrect password." });
+  }
+
+  const token = randomUUID();
+  adminSessions.add(token);
+  res.cookie("adminSession", token, {
+    httpOnly: true,
+    maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    sameSite: "lax",
+  });
+  res.json({ ok: true });
+});
+
+// ── POST /api/admin/logout ────────────────────────────────────────────────────
+router.post("/admin/logout", (req, res) => {
+  const token = (req.cookies as Record<string, string>)?.adminSession;
+  if (token) adminSessions.delete(token);
+  res.clearCookie("adminSession");
+  res.json({ ok: true });
+});
+
+// ── GET /api/admin/me ─────────────────────────────────────────────────────────
+router.get("/admin/me", (req, res) => {
+  const token = (req.cookies as Record<string, string>)?.adminSession;
+  res.json({ admin: !!token && adminSessions.has(token) });
+});
+
+// ── GET /api/admin/stats ──────────────────────────────────────────────────────
+router.get("/admin/stats", requireAdmin, async (req, res) => {
+  try {
+    const [acctRow]  = await db.select({ c: count() }).from(forexAccounts);
+    const [posRow]   = await db.select({ c: count() }).from(forexPositions);
+    const [tradeRow] = await db.select({ c: count(), totalPnl: sum(forexClosedTrades.pnl) }).from(forexClosedTrades);
+    const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades).where(gt(forexClosedTrades.pnl, 0));
+
+    const totalTrades = Number(tradeRow?.c ?? 0);
+    const wins        = Number(winRow?.c ?? 0);
+
+    res.json({
+      totalAccounts: Number(acctRow?.c ?? 0),
+      openPositions: Number(posRow?.c ?? 0),
+      totalTrades,
+      totalPnl:      parseFloat(Number(tradeRow?.totalPnl ?? 0).toFixed(2)),
+      winRate:       totalTrades > 0 ? parseFloat((wins / totalTrades * 100).toFixed(1)) : 0,
+    });
+  } catch (err) {
+    req.log.error({ err }, "admin/stats error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── GET /api/admin/accounts ───────────────────────────────────────────────────
+router.get("/admin/accounts", requireAdmin, async (req, res) => {
+  try {
+    const accounts = await db.select().from(forexAccounts).orderBy(forexAccounts.id);
+
+    const enriched = await Promise.all(
+      accounts.map(async (acc) => {
+        const sid = acc.sessionId;
+        const [posRow]   = await db.select({ c: count() }).from(forexPositions).where(eq(forexPositions.sessionId, sid));
+        const [tradeRow] = await db.select({ c: count(), pnl: sum(forexClosedTrades.pnl) })
+          .from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid));
+        const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades)
+          .where(eq(forexClosedTrades.sessionId, sid));
+
+        const totalTrades = Number(tradeRow?.c ?? 0);
+        const netPnl      = parseFloat(Number(tradeRow?.pnl ?? 0).toFixed(2));
+
+        return {
+          id:            acc.id,
+          sessionId:     acc.sessionId,
+          balance:       acc.balance,
+          createdAt:     acc.createdAt?.toISOString() ?? null,
+          openPositions: Number(posRow?.c ?? 0),
+          totalTrades,
+          netPnl,
+          winRate:       totalTrades > 0
+            ? parseFloat((Number(winRow?.c ?? 0) / totalTrades * 100).toFixed(1))
+            : 0,
+        };
+      }),
+    );
+
+    res.json(enriched);
+  } catch (err) {
+    req.log.error({ err }, "admin/accounts error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── POST /api/admin/accounts/:id/reset ───────────────────────────────────────
+router.post("/admin/accounts/:id/reset", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [acc] = await db.select().from(forexAccounts).where(eq(forexAccounts.id, id));
+    if (!acc) return void res.status(404).json({ error: "Account not found" });
+
+    await db.delete(forexPositions).where(eq(forexPositions.sessionId, acc.sessionId));
+    await db.delete(forexClosedTrades).where(eq(forexClosedTrades.sessionId, acc.sessionId));
+    await db.update(forexAccounts).set({ balance: 10000 }).where(eq(forexAccounts.id, id));
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/reset error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── PATCH /api/admin/accounts/:id/balance ────────────────────────────────────
+router.patch("/admin/accounts/:id/balance", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { balance } = req.body as { balance?: number };
+    if (typeof balance !== "number" || balance < 0 || balance > 10_000_000) {
+      return void res.status(400).json({ error: "balance must be 0–10,000,000" });
+    }
+    const [acc] = await db.select().from(forexAccounts).where(eq(forexAccounts.id, id));
+    if (!acc) return void res.status(404).json({ error: "Account not found" });
+
+    await db.update(forexAccounts).set({ balance }).where(eq(forexAccounts.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/balance error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── DELETE /api/admin/accounts/:id ───────────────────────────────────────────
+router.delete("/admin/accounts/:id", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const [acc] = await db.select().from(forexAccounts).where(eq(forexAccounts.id, id));
+    if (!acc) return void res.status(404).json({ error: "Account not found" });
+
+    await db.delete(forexPositions).where(eq(forexPositions.sessionId, acc.sessionId));
+    await db.delete(forexClosedTrades).where(eq(forexClosedTrades.sessionId, acc.sessionId));
+    await db.delete(forexAccounts).where(eq(forexAccounts.id, id));
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/delete error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+export default router;
