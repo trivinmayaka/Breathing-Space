@@ -368,9 +368,130 @@ function LiveTradersTab({ onLogout }: { onLogout: () => void }) {
   );
 }
 
+// ── Withdrawals tab ───────────────────────────────────────────────────────────
+interface WithdrawalRequest {
+  id: number; sessionId: string; traderName: string; amount: number;
+  paymentMethod: string; accountDetails: string; status: string;
+  note: string | null; createdAt: string | null; reviewedAt: string | null;
+}
+
+function WithdrawalsTab({ onLogout }: { onLogout: () => void }) {
+  const [items,   setItems]   = useState<WithdrawalRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error,   setError]   = useState('');
+  const [busy,    setBusy]    = useState<Record<number, 'approve' | 'reject'>>({});
+  const [note,    setNote]    = useState<Record<number, string>>({});
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/withdrawals');
+      if (res.status === 401) { onLogout(); return; }
+      setItems(await res.json());
+    } catch { setError('Failed to load withdrawal requests'); }
+    finally { setLoading(false); }
+  }, [onLogout]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function review(id: number, action: 'approve' | 'reject') {
+    setBusy(b => ({ ...b, [id]: action }));
+    try {
+      const res = await fetch(`/api/admin/withdrawals/${id}/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ note: note[id] ?? '' }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error ?? 'Failed'); return; }
+      await load();
+    } finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
+  }
+
+  const pending  = items.filter(w => w.status === 'pending');
+  const reviewed = items.filter(w => w.status !== 'pending');
+
+  return (
+    <div className="flex-1 p-6 overflow-y-auto">
+      {error && <div className="mb-4 text-sm text-red-400 bg-red-950/40 border border-red-800/40 rounded-lg px-4 py-3">{error}</div>}
+
+      {loading ? (
+        <div className="flex items-center justify-center h-32 text-muted-foreground text-xs">Loading…</div>
+      ) : items.length === 0 ? (
+        <div className="flex items-center justify-center h-48 text-muted-foreground text-xs">No withdrawal requests yet</div>
+      ) : (
+        <div className="flex flex-col gap-8">
+          {pending.length > 0 && (
+            <section>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-amber-400 mb-3">Pending · {pending.length}</h3>
+              <div className="flex flex-col gap-3">
+                {pending.map(w => (
+                  <div key={w.id} className="bg-card border border-border rounded-xl p-5 flex flex-col gap-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-sm text-foreground">{w.traderName}</p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5">{w.paymentMethod} → {w.accountDetails}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="font-bold font-mono text-amber-400 text-base">
+                          ${w.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </span>
+                        <StatusBadge status={w.status} />
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground/60">{fmtDate(w.createdAt)}</div>
+                    <div>
+                      <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1">Note (optional)</label>
+                      <input type="text" value={note[w.id] ?? ''} onChange={e => setNote(n => ({ ...n, [w.id]: e.target.value }))}
+                        placeholder="e.g. Sent via M-Pesa"
+                        className="w-full bg-[hsl(var(--input))] border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+                    </div>
+                    <div className="flex gap-2 pt-1 border-t border-border">
+                      <button onClick={() => review(w.id, 'reject')} disabled={!!busy[w.id]}
+                        className="flex-1 py-2 text-xs border border-red-900/40 text-red-400/70 hover:text-red-400 hover:border-red-700/50 rounded-lg transition-colors disabled:opacity-40 font-semibold">
+                        {busy[w.id] === 'reject' ? 'Rejecting…' : 'Reject'}
+                      </button>
+                      <button onClick={() => review(w.id, 'approve')} disabled={!!busy[w.id]}
+                        className="flex-1 py-2 text-xs bg-amber-700/30 hover:bg-amber-700/50 border border-amber-700/40 text-amber-400 rounded-lg transition-colors disabled:opacity-40 font-semibold">
+                        {busy[w.id] === 'approve' ? 'Approving…' : '✓ Approve & Deduct'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+          {reviewed.length > 0 && (
+            <section>
+              <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-3">History · {reviewed.length}</h3>
+              <div className="flex flex-col gap-3">
+                {reviewed.map(w => (
+                  <div key={w.id} className="bg-card border border-border rounded-xl p-5 flex flex-col gap-2">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="font-semibold text-sm text-foreground">{w.traderName}</p>
+                        <p className="text-[11px] text-muted-foreground">{w.paymentMethod} → {w.accountDetails}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1.5">
+                        <span className="font-bold font-mono text-amber-400">${w.amount.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                        <StatusBadge status={w.status} />
+                      </div>
+                    </div>
+                    {w.note && <p className="text-[11px] text-muted-foreground/70 italic">"{w.note}"</p>}
+                    <div className="text-[10px] text-muted-foreground/40">{fmtDate(w.reviewedAt)}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main dashboard ────────────────────────────────────────────────────────────
 export default function AdminDashboard({ onLogout, onBack }: { onLogout: () => void; onBack?: () => void }) {
-  const [tab,      setTab]      = useState<'accounts' | 'live-traders' | 'deposits'>('live-traders');
+  const [tab,      setTab]      = useState<'accounts' | 'live-traders' | 'deposits' | 'withdrawals'>('live-traders');
   const [stats,    setStats]    = useState<Stats | null>(null);
   const [accounts, setAccounts] = useState<DemoAccount[]>([]);
   const [loading,  setLoading]  = useState(true);
@@ -442,7 +563,8 @@ export default function AdminDashboard({ onLogout, onBack }: { onLogout: () => v
       <div className="flex border-b border-border px-6">
         {([
           { id: 'live-traders', label: '🟢 Live Traders' },
-          { id: 'deposits',     label: 'Deposit Requests' },
+          { id: 'deposits',     label: 'Deposits' },
+          { id: 'withdrawals',  label: 'Withdrawals' },
           { id: 'accounts',     label: 'Demo Accounts' },
         ] as const).map(t => (
           <button
@@ -461,6 +583,7 @@ export default function AdminDashboard({ onLogout, onBack }: { onLogout: () => v
 
       {tab === 'live-traders' && <LiveTradersTab onLogout={onLogout} />}
       {tab === 'deposits'     && <DepositsTab onLogout={onLogout} />}
+      {tab === 'withdrawals'  && <WithdrawalsTab onLogout={onLogout} />}
 
       {/* Accounts tab */}
       {tab === 'accounts' && (

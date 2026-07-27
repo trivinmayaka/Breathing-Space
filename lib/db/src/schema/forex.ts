@@ -58,6 +58,19 @@ export const liveTraders = pgTable("live_traders", {
   createdAt:    timestamp("created_at").defaultNow(),
 });
 
+export const withdrawalRequests = pgTable("withdrawal_requests", {
+  id:             serial("id").primaryKey(),
+  sessionId:      text("session_id").notNull(),
+  traderName:     text("trader_name").notNull(),
+  amount:         real("amount").notNull(),
+  paymentMethod:  text("payment_method").notNull(),   // e.g. M-Pesa, Bank Transfer
+  accountDetails: text("account_details").notNull(),  // phone/account number to send to
+  status:         text("status").notNull().default("pending"), // pending | approved | rejected
+  note:           text("note"),                        // admin note on review
+  createdAt:      timestamp("created_at").defaultNow(),
+  reviewedAt:     timestamp("reviewed_at"),
+});
+
 export const insertForexPositionSchema = createInsertSchema(forexPositions).omit({ id: true, openedAt: true });
 export type InsertForexPosition = z.infer<typeof insertForexPositionSchema>;
 export type ForexPosition     = typeof forexPositions.$inferSelect;

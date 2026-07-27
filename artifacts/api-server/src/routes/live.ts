@@ -3,8 +3,9 @@ import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
 import { eq, and, desc, count, gt, sum } from "drizzle-orm";
 import {
-  db, liveTraders, forexPositions, forexClosedTrades, depositRequests,
+  db, liveTraders, forexPositions, forexClosedTrades, depositRequests, withdrawalRequests,
 } from "@workspace/db";
+import { desc as descOrder } from "drizzle-orm";
 import { getPriceSnapshot, getCandleData, calcPnl, INSTRUMENTS } from "../lib/forex-sim";
 import type { Request, Response, NextFunction } from "express";
 
@@ -286,6 +287,65 @@ router.post("/live/deposit", requireLive, async (req, res) => {
     });
   } catch (err) {
     req.log.error({ err }, "live/deposit error");
+    return void res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── POST /api/live/withdraw ───────────────────────────────────────────────────
+router.post("/live/withdraw", requireLive, async (req, res) => {
+  try {
+    const trader = (req as any).liveTrader as { id: number; fullName: string; balance: number };
+    const { amount, paymentMethod, accountDetails } = req.body as Record<string, string>;
+
+    if (!paymentMethod?.trim() || !accountDetails?.trim()) {
+      return void res.status(400).json({ error: "Payment method and account details are required." });
+    }
+    const amt = parseFloat(amount);
+    if (isNaN(amt) || amt <= 0) {
+      return void res.status(400).json({ error: "Enter a valid withdrawal amount." });
+    }
+    if (amt > trader.balance) {
+      return void res.status(400).json({ error: `Insufficient balance. Your balance is $${trader.balance.toFixed(2)}.` });
+    }
+
+    // Check for existing pending withdrawal
+    const existing = await db.query.withdrawalRequests.findFirst({
+      where: and(eq(withdrawalRequests.sessionId, liveSessionId(trader.id)), eq(withdrawalRequests.status, "pending")),
+    });
+    if (existing) {
+      return void res.status(409).json({ error: "You already have a pending withdrawal request. Please wait for it to be reviewed." });
+    }
+
+    await db.insert(withdrawalRequests).values({
+      sessionId:      liveSessionId(trader.id),
+      traderName:     trader.fullName,
+      amount:         amt,
+      paymentMethod:  paymentMethod.trim(),
+      accountDetails: accountDetails.trim(),
+      status:         "pending",
+    });
+
+    return void res.status(201).json({
+      ok: true,
+      message: "Withdrawal request submitted. Funds will be sent to your account once the admin processes it.",
+    });
+  } catch (err) {
+    req.log.error({ err }, "live/withdraw error");
+    return void res.status(500).json({ error: "Failed to submit withdrawal request." });
+  }
+});
+
+// ── GET /api/live/withdrawals ─────────────────────────────────────────────────
+router.get("/live/withdrawals", requireLive, async (req, res) => {
+  try {
+    const trader = (req as any).liveTrader as { id: number };
+    const sid = liveSessionId(trader.id);
+    const rows = await db.select().from(withdrawalRequests)
+      .where(eq(withdrawalRequests.sessionId, sid))
+      .orderBy(descOrder(withdrawalRequests.createdAt));
+    return void res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "live/withdrawals error");
     return void res.status(500).json({ error: "Failed" });
   }
 });

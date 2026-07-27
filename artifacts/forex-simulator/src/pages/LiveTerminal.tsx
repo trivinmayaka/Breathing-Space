@@ -111,6 +111,87 @@ function DepositModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Withdrawal Modal ─────────────────────────────────────────────────────────
+function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => void }) {
+  const [form, setForm] = useState({ amount: '', paymentMethod: '', accountDetails: '' });
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [err, setErr] = useState('');
+
+  const set = (k: keyof typeof form) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(''); setLoading(true);
+    try {
+      const res = await fetch(`${API}/live/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
+      setSuccess(data.message);
+    } catch { setErr('Network error.'); }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-[hsl(220_28%_7%)] border border-border rounded-2xl shadow-2xl p-7 relative" onClick={e => e.stopPropagation()}>
+        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+
+        <div className="flex items-center gap-3 mb-5">
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
+            <svg className="w-5 h-5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75" />
+            </svg>
+          </div>
+          <div>
+            <h2 className="text-base font-bold text-foreground">Request Withdrawal</h2>
+            <p className="text-xs text-muted-foreground">Available balance: <span className="font-mono text-foreground">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></p>
+          </div>
+        </div>
+
+        {success ? (
+          <div className="space-y-4">
+            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm text-emerald-300">{success}</div>
+            <button onClick={onClose} className="w-full h-11 bg-amber-700 hover:bg-amber-600 text-white font-bold rounded-xl text-sm transition-all">Close</button>
+          </div>
+        ) : (
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Amount (USD)</label>
+              <input type="number" value={form.amount} onChange={e => set('amount')(e.target.value)}
+                placeholder={`Max $${balance.toFixed(2)}`} min="1" max={balance} step="0.01"
+                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/60 transition-all" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Payment Method</label>
+              <input type="text" value={form.paymentMethod} onChange={e => set('paymentMethod')(e.target.value)}
+                placeholder="e.g. M-Pesa, Bank Transfer, Crypto"
+                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/60 transition-all" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Account Details</label>
+              <input type="text" value={form.accountDetails} onChange={e => set('accountDetails')(e.target.value)}
+                placeholder="Phone number, bank account, or wallet address"
+                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/60 transition-all" />
+            </div>
+            {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
+            <button type="submit" disabled={loading || balance <= 0}
+              className="w-full h-11 bg-amber-700 hover:bg-amber-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2">
+              {loading ? 'Submitting…' : 'Submit Withdrawal Request'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Order Modal ──────────────────────────────────────────────────────────────
 function OrderModal({
   pair, prices, balance, onClose, onPlaced,
@@ -205,6 +286,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
   const [prices,   setPrices]   = useState<PriceSnapshot>({});
   const [selPair,  setSelPair]  = useState('EUR/USD');
   const [showDep,  setShowDep]  = useState(false);
+  const [showWith, setShowWith] = useState(false);
   const [orderPair, setOrderPair] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
   const [history,  setHistory]  = useState<any[]>([]);
@@ -300,6 +382,13 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/>
             </svg>
             <span className="hidden sm:block">Deposit</span>
+          </button>
+          <button onClick={() => setShowWith(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-700/30 hover:bg-amber-700/50 border border-amber-700/50 text-amber-400 text-xs font-bold transition-all">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 20v-16m-8 8h16"/>
+            </svg>
+            <span className="hidden sm:block">Withdraw</span>
           </button>
           <button onClick={onLogout} className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-lg hover:bg-white/5">
             Sign Out
@@ -464,7 +553,8 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
       </div>
 
       {/* ── Modals ── */}
-      {showDep && <DepositModal onClose={() => { setShowDep(false); loadAccount(); }} />}
+      {showDep  && <DepositModal  onClose={() => { setShowDep(false);  loadAccount(); }} />}
+      {showWith && <WithdrawModal balance={bal} onClose={() => { setShowWith(false); loadAccount(); }} />}
       {orderPair && (
         <OrderModal
           pair={orderPair} prices={prices} balance={bal}

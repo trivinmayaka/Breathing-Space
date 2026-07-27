@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
 import { eq, count, sum, gt, desc } from "drizzle-orm";
-import { db, forexAccounts, forexPositions, forexClosedTrades, liveTraders, depositRequests } from "@workspace/db";
+import { db, forexAccounts, forexPositions, forexClosedTrades, liveTraders, depositRequests, withdrawalRequests } from "@workspace/db";
 import { adminSessions } from "../lib/admin-sessions";
 import type { Request, Response, NextFunction } from "express";
 
@@ -232,6 +232,72 @@ router.delete("/admin/live-traders/:id", requireAdmin, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "admin/live-traders delete error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── GET /api/admin/withdrawals ────────────────────────────────────────────────
+router.get("/admin/withdrawals", requireAdmin, async (req, res) => {
+  try {
+    const rows = await db.select().from(withdrawalRequests).orderBy(desc(withdrawalRequests.createdAt));
+    res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "admin/withdrawals error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── POST /api/admin/withdrawals/:id/approve ───────────────────────────────────
+router.post("/admin/withdrawals/:id/approve", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { note } = req.body as { note?: string };
+    const [wr] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, id));
+    if (!wr) return void res.status(404).json({ error: "Request not found" });
+    if (wr.status !== "pending") return void res.status(400).json({ error: "Already reviewed" });
+
+    // Parse traderId from sessionId (live-{id})
+    const traderId = parseInt(wr.sessionId.replace("live-", ""), 10);
+    const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, traderId));
+    if (!trader) return void res.status(404).json({ error: "Trader not found" });
+
+    if (wr.amount > trader.balance) {
+      return void res.status(400).json({ error: `Trader balance ($${trader.balance.toFixed(2)}) is less than withdrawal amount ($${wr.amount.toFixed(2)}).` });
+    }
+
+    const newBalance = parseFloat((trader.balance - wr.amount).toFixed(2));
+    await db.update(liveTraders).set({ balance: newBalance }).where(eq(liveTraders.id, traderId));
+    await db.update(withdrawalRequests).set({
+      status: "approved",
+      note: note?.trim() || null,
+      reviewedAt: new Date(),
+    }).where(eq(withdrawalRequests.id, id));
+
+    res.json({ ok: true, newBalance });
+  } catch (err) {
+    req.log.error({ err }, "admin/withdrawals approve error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── POST /api/admin/withdrawals/:id/reject ────────────────────────────────────
+router.post("/admin/withdrawals/:id/reject", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { note } = req.body as { note?: string };
+    const [wr] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, id));
+    if (!wr) return void res.status(404).json({ error: "Request not found" });
+    if (wr.status !== "pending") return void res.status(400).json({ error: "Already reviewed" });
+
+    await db.update(withdrawalRequests).set({
+      status: "rejected",
+      note: note?.trim() || null,
+      reviewedAt: new Date(),
+    }).where(eq(withdrawalRequests.id, id));
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/withdrawals reject error");
     res.status(500).json({ error: "Failed" });
   }
 });
