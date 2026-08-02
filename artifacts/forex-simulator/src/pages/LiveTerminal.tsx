@@ -36,75 +36,282 @@ const PAIRS = [
   'USD/MXN','USD/ZAR','EUR/CHF',
 ];
 
+// ─── Payment methods config ───────────────────────────────────────────────────
+const DEPOSIT_METHODS = [
+  {
+    id: 'mpesa',
+    label: 'M-Pesa',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 15.75h3" />
+      </svg>
+    ),
+    color: 'emerald',
+    instructions: [
+      { label: 'Paybill Number', value: '247247' },
+      { label: 'Account Number', value: 'TrivinFX' },
+    ],
+    hint: 'Go to M-Pesa → Lipa na M-Pesa → Paybill, enter the details above, then paste your confirmation code below.',
+    refPlaceholder: 'e.g. QGH3K2X1W4',
+  },
+  {
+    id: 'airtel',
+    label: 'Airtel Money',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 15.75h3" />
+      </svg>
+    ),
+    color: 'red',
+    instructions: [
+      { label: 'Send to Number', value: '+254 733 000 000' },
+      { label: 'Account Name', value: 'TrivinFX Ltd' },
+    ],
+    hint: 'Open Airtel Money → Send Money, enter the number above, then share the transaction ID.',
+    refPlaceholder: 'e.g. AT2024XXXXXXXX',
+  },
+  {
+    id: 'bank',
+    label: 'Bank Transfer',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" />
+      </svg>
+    ),
+    color: 'blue',
+    instructions: [
+      { label: 'Bank', value: 'Equity Bank' },
+      { label: 'Account No.', value: '0123456789' },
+      { label: 'Account Name', value: 'TrivinFX Financial Ltd' },
+    ],
+    hint: 'Transfer via internet banking or at a branch. Use your name as the reference so we can match your payment.',
+    refPlaceholder: 'Bank reference or slip number',
+  },
+  {
+    id: 'crypto',
+    label: 'Crypto (USDT)',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
+      </svg>
+    ),
+    color: 'amber',
+    instructions: [
+      { label: 'Network', value: 'TRC20 (Tron)' },
+      { label: 'Wallet Address', value: 'TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
+    ],
+    hint: 'Send USDT via TRC20 only. Paste the transaction hash below after sending.',
+    refPlaceholder: 'Transaction hash (TxID)',
+  },
+  {
+    id: 'western',
+    label: 'Western Union',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+      </svg>
+    ),
+    color: 'yellow',
+    instructions: [
+      { label: 'Receiver Name', value: 'John Kamau' },
+      { label: 'Country', value: 'Kenya' },
+      { label: 'City', value: 'Nairobi' },
+    ],
+    hint: 'Visit a Western Union agent and send to the details above. Share the MTCN tracking number below.',
+    refPlaceholder: 'MTCN tracking number',
+  },
+  {
+    id: 'cash',
+    label: 'Cash',
+    icon: (
+      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+      </svg>
+    ),
+    color: 'violet',
+    instructions: [
+      { label: 'Office', value: 'TrivinFX HQ, Nairobi CBD' },
+      { label: 'Hours', value: 'Mon–Fri, 9 AM – 5 PM' },
+      { label: 'Contact', value: '+254 700 000 000' },
+    ],
+    hint: 'Visit our office with cash. Our agent will issue a receipt and your account is credited same day.',
+    refPlaceholder: 'Receipt number from agent',
+  },
+] as const;
+
+type MethodId = typeof DEPOSIT_METHODS[number]['id'];
+
+const colorMap: Record<string, string> = {
+  emerald: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400',
+  red:     'border-red-500/40     bg-red-500/10     text-red-400',
+  blue:    'border-blue-500/40    bg-blue-500/10    text-blue-400',
+  amber:   'border-amber-500/40   bg-amber-500/10   text-amber-400',
+  yellow:  'border-yellow-500/40  bg-yellow-500/10  text-yellow-400',
+  violet:  'border-violet-500/40  bg-violet-500/10  text-violet-400',
+};
+
+const btnMap: Record<string, string> = {
+  emerald: 'bg-emerald-700 hover:bg-emerald-600',
+  red:     'bg-red-700     hover:bg-red-600',
+  blue:    'bg-blue-700    hover:bg-blue-600',
+  amber:   'bg-amber-700   hover:bg-amber-600',
+  yellow:  'bg-yellow-700  hover:bg-yellow-600',
+  violet:  'bg-violet-700  hover:bg-violet-600',
+};
+
 // ─── Deposit Modal ────────────────────────────────────────────────────────────
 function DepositModal({ onClose }: { onClose: () => void }) {
-  const [form, setForm] = useState<DepositForm>({ amount: '', paymentMethod: '', paymentReference: '', contact: '' });
-  const [loading, setLoading] = useState(false);
-  const [success, setSuccess] = useState('');
-  const [err, setErr] = useState('');
+  const [step, setStep]     = useState<'pick' | 'form' | 'done'>('pick');
+  const [methodId, setMethodId] = useState<MethodId | null>(null);
+  const [amount, setAmount]     = useState('');
+  const [ref, setRef]           = useState('');
+  const [contact, setContact]   = useState('');
+  const [loading, setLoading]   = useState(false);
+  const [err, setErr]           = useState('');
 
-  const set = (k: keyof DepositForm) => (v: string) => setForm(f => ({ ...f, [k]: v }));
+  const method = DEPOSIT_METHODS.find(m => m.id === methodId);
+
+  function pick(id: MethodId) {
+    setMethodId(id);
+    setErr('');
+    setStep('form');
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (!method) return;
     setErr(''); setLoading(true);
     try {
       const res = await fetch(`${API}/live/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          amount,
+          paymentMethod: method.label,
+          paymentReference: ref,
+          contact,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
-      setSuccess(data.message);
-    } catch { setErr('Network error.'); }
+      setStep('done');
+    } catch { setErr('Network error. Please try again.'); }
     finally { setLoading(false); }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-md bg-[hsl(220_28%_7%)] border border-border rounded-2xl shadow-2xl p-7 relative" onClick={e => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-        </button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
+      <div className="w-full max-w-lg bg-[hsl(220_28%_7%)] border border-border rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
 
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-            <svg className="w-5 h-5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+          <div className="flex items-center gap-3">
+            {step === 'form' && (
+              <button onClick={() => { setStep('pick'); setErr(''); }}
+                className="w-7 h-7 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all -ml-1">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7"/></svg>
+              </button>
+            )}
+            <div>
+              <p className="text-sm font-bold text-foreground">
+                {step === 'pick' ? 'Deposit Funds' : step === 'form' ? `Pay via ${method?.label}` : 'Request Submitted'}
+              </p>
+              {step === 'pick' && <p className="text-[11px] text-muted-foreground">Choose how you'd like to send funds</p>}
+              {step === 'form' && <p className="text-[11px] text-muted-foreground">Follow the instructions and fill in your details</p>}
+            </div>
           </div>
-          <div>
-            <h2 className="text-base font-bold text-foreground">Request Deposit</h2>
-            <p className="text-xs text-muted-foreground">Funds credited after admin confirmation</p>
-          </div>
+          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+          </button>
         </div>
 
-        {success ? (
-          <div className="space-y-4">
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 text-sm text-emerald-300">{success}</div>
-            <button onClick={onClose} className="w-full h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all">Close</button>
+        {/* Step: Pick method */}
+        {step === 'pick' && (
+          <div className="p-5 grid grid-cols-3 gap-3">
+            {DEPOSIT_METHODS.map(m => {
+              const cls = colorMap[m.color] ?? colorMap.emerald;
+              return (
+                <button key={m.id} onClick={() => pick(m.id)}
+                  className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all hover:scale-[1.03] active:scale-100 ${cls}`}>
+                  <span>{m.icon}</span>
+                  <span className="text-xs font-bold text-foreground">{m.label}</span>
+                </button>
+              );
+            })}
           </div>
-        ) : (
-          <form onSubmit={submit} className="space-y-4">
-            {[
-              { label: 'Amount (USD)', key: 'amount' as const, type: 'number', placeholder: 'e.g. 500' },
-              { label: 'Payment Method', key: 'paymentMethod' as const, type: 'text', placeholder: 'e.g. M-Pesa, Bank Transfer, Crypto' },
-              { label: 'Payment Reference', key: 'paymentReference' as const, type: 'text', placeholder: 'Transaction ID or ref number' },
-              { label: 'Your Contact', key: 'contact' as const, type: 'text', placeholder: 'Phone or email for confirmation' },
-            ].map(({ label, key, type, placeholder }) => (
-              <div key={key}>
-                <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">{label}</label>
-                <input type={type} value={form[key]} onChange={e => set(key)(e.target.value)} placeholder={placeholder}
-                  className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
+        )}
+
+        {/* Step: Form */}
+        {step === 'form' && method && (
+          <form onSubmit={submit} className="p-5 space-y-4">
+            {/* Payment instructions box */}
+            <div className={`rounded-xl border p-4 space-y-2 ${colorMap[method.color]}`}>
+              <p className="text-[11px] font-bold uppercase tracking-widest opacity-70">Send payment to</p>
+              <div className="space-y-1.5">
+                {method.instructions.map(({ label, value }) => (
+                  <div key={label} className="flex items-start justify-between gap-3">
+                    <span className="text-xs text-foreground/60 shrink-0">{label}</span>
+                    <span className="text-xs font-mono font-bold text-foreground text-right break-all">{value}</span>
+                  </div>
+                ))}
               </div>
-            ))}
+              <p className="text-[11px] text-foreground/60 leading-relaxed pt-1 border-t border-current/20">{method.hint}</p>
+            </div>
+
+            {/* Amount */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Amount (USD)</label>
+              <input required type="number" min="1" max="1000000" step="0.01"
+                value={amount} onChange={e => { setAmount(e.target.value); setErr(''); }}
+                placeholder="e.g. 500"
+                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
+            </div>
+
+            {/* Reference */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Transaction Reference / ID</label>
+              <input required type="text"
+                value={ref} onChange={e => { setRef(e.target.value); setErr(''); }}
+                placeholder={method.refPlaceholder}
+                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
+            </div>
+
+            {/* Contact */}
+            <div>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Your Phone or Email</label>
+              <input required type="text"
+                value={contact} onChange={e => { setContact(e.target.value); setErr(''); }}
+                placeholder="For deposit confirmation"
+                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
+            </div>
+
             {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
+
             <button type="submit" disabled={loading}
-              className="w-full h-11 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2">
-              {loading ? 'Submitting…' : 'Submit Deposit Request'}
+              className={`w-full h-11 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 ${btnMap[method.color] ?? btnMap.emerald}`}>
+              {loading
+                ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Submitting…</>
+                : <>Submit Deposit Request</>
+              }
             </button>
           </form>
+        )}
+
+        {/* Step: Done */}
+        {step === 'done' && (
+          <div className="p-8 flex flex-col items-center text-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+              <svg className="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            </div>
+            <p className="text-base font-bold text-foreground">Deposit Request Sent!</p>
+            <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
+              Your request is pending admin review. Once your payment is confirmed, your account balance will be credited automatically.
+            </p>
+            <button onClick={onClose}
+              className="mt-3 px-8 h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all">
+              Done
+            </button>
+          </div>
         )}
       </div>
     </div>
