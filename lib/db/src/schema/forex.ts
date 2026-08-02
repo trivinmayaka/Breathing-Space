@@ -1,4 +1,4 @@
-import { pgTable, serial, text, real, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, real, integer, timestamp, boolean } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -55,6 +55,7 @@ export const liveTraders = pgTable("live_traders", {
   passwordHash: text("password_hash").notNull(),
   fullName:     text("full_name").notNull(),
   balance:      real("balance").notNull().default(0),
+  suspended:    boolean("suspended").notNull().default(false),
   createdAt:    timestamp("created_at").defaultNow(),
 });
 

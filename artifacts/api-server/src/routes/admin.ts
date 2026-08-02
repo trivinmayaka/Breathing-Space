@@ -1,8 +1,12 @@
 import { Router } from "express";
 import { randomUUID } from "crypto";
 import { eq, count, sum, gt, desc } from "drizzle-orm";
-import { db, forexAccounts, forexPositions, forexClosedTrades, liveTraders, depositRequests, withdrawalRequests } from "@workspace/db";
+import {
+  db, forexAccounts, forexPositions, forexClosedTrades,
+  liveTraders, depositRequests, withdrawalRequests,
+} from "@workspace/db";
 import { adminSessions } from "../lib/admin-sessions";
+import { getPriceSnapshot, calcPnl } from "../lib/forex-sim";
 import type { Request, Response, NextFunction } from "express";
 
 const router = Router();
@@ -34,7 +38,7 @@ router.post("/admin/login", (req, res) => {
   adminSessions.add(token);
   res.cookie("adminSession", token, {
     httpOnly: true,
-    maxAge: 8 * 60 * 60 * 1000, // 8 hours
+    maxAge: 8 * 60 * 60 * 1000,
     sameSite: "lax",
   });
   res.json({ ok: true });
@@ -57,20 +61,30 @@ router.get("/admin/me", (req, res) => {
 // ── GET /api/admin/stats ──────────────────────────────────────────────────────
 router.get("/admin/stats", requireAdmin, async (req, res) => {
   try {
-    const [acctRow]  = await db.select({ c: count() }).from(forexAccounts);
-    const [posRow]   = await db.select({ c: count() }).from(forexPositions);
-    const [tradeRow] = await db.select({ c: count(), totalPnl: sum(forexClosedTrades.pnl) }).from(forexClosedTrades);
-    const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades).where(gt(forexClosedTrades.pnl, 0));
+    const [acctRow]     = await db.select({ c: count() }).from(forexAccounts);
+    const [posRow]      = await db.select({ c: count() }).from(forexPositions);
+    const [tradeRow]    = await db.select({ c: count(), totalPnl: sum(forexClosedTrades.pnl) }).from(forexClosedTrades);
+    const [winRow]      = await db.select({ c: count() }).from(forexClosedTrades).where(gt(forexClosedTrades.pnl, 0));
+    const [liveRow]     = await db.select({ c: count() }).from(liveTraders);
+    const [suspRow]     = await db.select({ c: count() }).from(liveTraders).where(eq(liveTraders.suspended, true));
+    const [pendDepRow]  = await db.select({ c: count() }).from(depositRequests).where(eq(depositRequests.status, "pending"));
+    const [pendWdRow]   = await db.select({ c: count() }).from(withdrawalRequests).where(eq(withdrawalRequests.status, "pending"));
+    const [balRow]      = await db.select({ total: sum(liveTraders.balance) }).from(liveTraders);
 
     const totalTrades = Number(tradeRow?.c ?? 0);
     const wins        = Number(winRow?.c ?? 0);
 
     res.json({
-      totalAccounts: Number(acctRow?.c ?? 0),
-      openPositions: Number(posRow?.c ?? 0),
+      totalAccounts:      Number(acctRow?.c ?? 0),
+      openPositions:      Number(posRow?.c ?? 0),
       totalTrades,
-      totalPnl:      parseFloat(Number(tradeRow?.totalPnl ?? 0).toFixed(2)),
-      winRate:       totalTrades > 0 ? parseFloat((wins / totalTrades * 100).toFixed(1)) : 0,
+      totalPnl:           parseFloat(Number(tradeRow?.totalPnl ?? 0).toFixed(2)),
+      winRate:            totalTrades > 0 ? parseFloat((wins / totalTrades * 100).toFixed(1)) : 0,
+      liveTraderCount:    Number(liveRow?.c ?? 0),
+      suspendedCount:     Number(suspRow?.c ?? 0),
+      pendingDeposits:    Number(pendDepRow?.c ?? 0),
+      pendingWithdrawals: Number(pendWdRow?.c ?? 0),
+      totalLiveBalance:   parseFloat(Number(balRow?.total ?? 0).toFixed(2)),
     });
   } catch (err) {
     req.log.error({ err }, "admin/stats error");
@@ -185,12 +199,16 @@ router.get("/admin/live-traders", requireAdmin, async (req, res) => {
       const totalTrades = Number(tradeRow?.c ?? 0);
       const wins        = Number(winRow?.c ?? 0);
       return {
-        id: t.id, email: t.email, fullName: t.fullName, balance: t.balance,
-        createdAt: t.createdAt,
-        openPositions:  Number(posRow?.c ?? 0),
+        id:              t.id,
+        email:           t.email,
+        fullName:        t.fullName,
+        balance:         t.balance,
+        suspended:       t.suspended,
+        createdAt:       t.createdAt,
+        openPositions:   Number(posRow?.c ?? 0),
         totalTrades,
-        netPnl:         parseFloat(Number(tradeRow?.pnl ?? 0).toFixed(2)),
-        winRate:        totalTrades > 0 ? parseFloat((wins / totalTrades * 100).toFixed(1)) : 0,
+        netPnl:          parseFloat(Number(tradeRow?.pnl ?? 0).toFixed(2)),
+        winRate:         totalTrades > 0 ? parseFloat((wins / totalTrades * 100).toFixed(1)) : 0,
         pendingDeposits: Number(depRow?.c ?? 0),
       };
     }));
@@ -215,6 +233,83 @@ router.patch("/admin/live-traders/:id/balance", requireAdmin, async (req, res) =
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "admin/live-traders balance error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── PATCH /api/admin/live-traders/:id/suspend ─────────────────────────────────
+router.patch("/admin/live-traders/:id/suspend", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { suspended } = req.body as { suspended?: boolean };
+    if (typeof suspended !== "boolean") {
+      return void res.status(400).json({ error: "suspended must be a boolean" });
+    }
+    const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, id));
+    if (!trader) return void res.status(404).json({ error: "Trader not found" });
+    await db.update(liveTraders).set({ suspended }).where(eq(liveTraders.id, id));
+    res.json({ ok: true, suspended });
+  } catch (err) {
+    req.log.error({ err }, "admin/live-traders suspend error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── POST /api/admin/live-traders/:id/close-all ────────────────────────────────
+router.post("/admin/live-traders/:id/close-all", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const sid = `live-${id}`;
+    const prices = getPriceSnapshot();
+
+    const positions = await db.select().from(forexPositions).where(eq(forexPositions.sessionId, sid));
+    if (positions.length === 0) return void res.json({ ok: true, closed: 0, pnl: 0 });
+
+    let totalPnl = 0;
+    for (const pos of positions) {
+      const cp  = prices[pos.pair] ?? pos.openPrice;
+      const pnl = calcPnl(pos.action, pos.lots, pos.openPrice, cp);
+      totalPnl += pnl;
+      await db.insert(forexClosedTrades).values({
+        sessionId:  sid,
+        pair:       pos.pair,
+        action:     pos.action,
+        lots:       pos.lots,
+        openPrice:  pos.openPrice,
+        closePrice: cp,
+        pnl:        parseFloat(pnl.toFixed(2)),
+        openedAt:   pos.openedAt?.toISOString() ?? new Date().toISOString(),
+      });
+    }
+
+    await db.delete(forexPositions).where(eq(forexPositions.sessionId, sid));
+
+    const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, id));
+    if (trader) {
+      const newBalance = parseFloat((trader.balance + totalPnl).toFixed(2));
+      await db.update(liveTraders).set({ balance: Math.max(0, newBalance) }).where(eq(liveTraders.id, id));
+    }
+
+    res.json({ ok: true, closed: positions.length, pnl: parseFloat(totalPnl.toFixed(2)) });
+  } catch (err) {
+    req.log.error({ err }, "admin/live-traders close-all error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── GET /api/admin/live-traders/:id/trades ────────────────────────────────────
+router.get("/admin/live-traders/:id/trades", requireAdmin, async (req, res) => {
+  try {
+    const id  = parseInt(req.params.id, 10);
+    const sid = `live-${id}`;
+    const trades = await db
+      .select()
+      .from(forexClosedTrades)
+      .where(eq(forexClosedTrades.sessionId, sid))
+      .orderBy(desc(forexClosedTrades.closedAt));
+    res.json(trades);
+  } catch (err) {
+    req.log.error({ err }, "admin/live-traders trades error");
     res.status(500).json({ error: "Failed" });
   }
 });
@@ -256,13 +351,14 @@ router.post("/admin/withdrawals/:id/approve", requireAdmin, async (req, res) => 
     if (!wr) return void res.status(404).json({ error: "Request not found" });
     if (wr.status !== "pending") return void res.status(400).json({ error: "Already reviewed" });
 
-    // Parse traderId from sessionId (live-{id})
     const traderId = parseInt(wr.sessionId.replace("live-", ""), 10);
     const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, traderId));
     if (!trader) return void res.status(404).json({ error: "Trader not found" });
 
     if (wr.amount > trader.balance) {
-      return void res.status(400).json({ error: `Trader balance ($${trader.balance.toFixed(2)}) is less than withdrawal amount ($${wr.amount.toFixed(2)}).` });
+      return void res.status(400).json({
+        error: `Trader balance ($${trader.balance.toFixed(2)}) is less than withdrawal amount ($${wr.amount.toFixed(2)}).`,
+      });
     }
 
     const newBalance = parseFloat((trader.balance - wr.amount).toFixed(2));
