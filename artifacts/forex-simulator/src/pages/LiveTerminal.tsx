@@ -161,13 +161,14 @@ const btnMap: Record<string, string> = {
 
 // ─── Deposit Modal ────────────────────────────────────────────────────────────
 function DepositModal({ onClose }: { onClose: () => void }) {
-  const [step, setStep]     = useState<'pick' | 'form' | 'done'>('pick');
+  const [step, setStep]         = useState<'pick' | 'form' | 'done'>('pick');
   const [methodId, setMethodId] = useState<MethodId | null>(null);
   const [amount, setAmount]     = useState('');
   const [ref, setRef]           = useState('');
   const [contact, setContact]   = useState('');
   const [loading, setLoading]   = useState(false);
   const [err, setErr]           = useState('');
+  const [credited, setCredited] = useState('');
 
   const method = DEPOSIT_METHODS.find(m => m.id === methodId);
 
@@ -194,6 +195,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
+      setCredited(data.message ?? `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} credited to your account.`);
       setStep('done');
     } catch { setErr('Network error. Please try again.'); }
     finally { setLoading(false); }
@@ -300,16 +302,19 @@ function DepositModal({ onClose }: { onClose: () => void }) {
         {/* Step: Done */}
         {step === 'done' && (
           <div className="p-8 flex flex-col items-center text-center gap-3">
-            <div className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-              <svg className="w-7 h-7 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+              <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
             </div>
-            <p className="text-base font-bold text-foreground">Deposit Request Sent!</p>
-            <p className="text-sm text-muted-foreground leading-relaxed max-w-xs">
-              Your request is pending admin review. Once your payment is confirmed, your account balance will be credited automatically.
+            <p className="text-base font-bold text-foreground">Deposit Successful!</p>
+            <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3 w-full">
+              <p className="text-sm text-emerald-300 font-semibold">{credited}</p>
+            </div>
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
+              Your balance has been updated. You can start trading immediately.
             </p>
             <button onClick={onClose}
-              className="mt-3 px-8 h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all">
-              Done
+              className="mt-2 px-8 h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all w-full">
+              Start Trading
             </button>
           </div>
         )}

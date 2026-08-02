@@ -271,6 +271,17 @@ router.post("/live/deposit", requireLive, async (req, res) => {
       return void res.status(400).json({ error: "Enter a valid amount (1 – 10,000,000)." });
     }
 
+    // Auto-approve: credit balance immediately and record as approved
+    const [current] = await db
+      .select({ balance: liveTraders.balance })
+      .from(liveTraders)
+      .where(eq(liveTraders.id, trader.id));
+
+    await db
+      .update(liveTraders)
+      .set({ balance: parseFloat(((current?.balance ?? 0) + amt).toFixed(2)) })
+      .where(eq(liveTraders.id, trader.id));
+
     await db.insert(depositRequests).values({
       sessionId: liveSessionId(trader.id),
       traderName: trader.fullName,
@@ -278,12 +289,14 @@ router.post("/live/deposit", requireLive, async (req, res) => {
       amount: amt,
       paymentMethod: paymentMethod.trim(),
       paymentReference: paymentReference.trim(),
-      status: "pending",
+      status: "approved",
+      reviewedAt: new Date(),
     });
 
     return void res.status(201).json({
       ok: true,
-      message: "Deposit request submitted. You will be credited once the admin confirms payment.",
+      newBalance: parseFloat(((current?.balance ?? 0) + amt).toFixed(2)),
+      message: `$${amt.toLocaleString("en-US", { minimumFractionDigits: 2 })} has been credited to your account.`,
     });
   } catch (err) {
     req.log.error({ err }, "live/deposit error");
