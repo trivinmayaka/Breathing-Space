@@ -666,7 +666,7 @@ export default function App() {
     <>
       {view === 'landing'      && <LandingPage onDemo={demoLogin} onReal={() => setView('live-auth')} />}
       {view === 'demo-dash'    && <Terminal onLogout={demoLogout} />}
-      {view === 'live-auth'    && <LiveAuth onLogin={liveLogin} onBack={() => setView('landing')} />}
+      {view === 'live-auth'    && <LiveAuth onLogin={liveLogin} onBack={() => setView('landing')} onAdmin={() => setView('admin-login')} />}
       {view === 'live-dash'    && <LiveTerminal onLogout={liveLogout} />}
       {view === 'admin-login'  && <AdminLogin onLogin={adminLogin} onBack={() => setView('landing')} />}
       {view === 'admin-hub'    && <AdminHub onDashboard={() => setView('admin-dash')} onRealAccount={() => setView('real-account')} onLogout={adminLogout} />}

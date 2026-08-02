@@ -3,6 +3,7 @@ import { useState } from 'react';
 interface LiveAuthProps {
   onLogin: () => void;
   onBack: () => void;
+  onAdmin?: () => void;
 }
 
 const API = '/api';
@@ -145,7 +146,7 @@ function LoginTab({ onSuccess }: { onSuccess: () => void }) {
   );
 }
 
-export default function LiveAuth({ onLogin, onBack }: LiveAuthProps) {
+export default function LiveAuth({ onLogin, onBack, onAdmin }: LiveAuthProps) {
   const [tab, setTab] = useState<'login' | 'register'>('login');
 
   return (
@@ -220,6 +221,13 @@ export default function LiveAuth({ onLogin, onBack }: LiveAuthProps) {
           <p className="text-center text-[11px] text-muted-foreground/40 mt-4">
             Live accounts require a deposit to start trading. Admin controls all balance approvals.
           </p>
+          {onAdmin && (
+            <div className="text-center mt-3">
+              <button onClick={onAdmin} className="text-[11px] text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors">
+                Platform administrator? <span className="underline underline-offset-2">Admin login →</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
