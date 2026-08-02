@@ -1,6 +1,6 @@
-# [Project name]
+# TrivinFX Pro
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+A Forex trading simulator platform with a demo account terminal, live real-account trading, and an admin dashboard.
 
 ## Run & Operate
 
