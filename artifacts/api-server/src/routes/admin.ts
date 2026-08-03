@@ -331,6 +331,76 @@ router.delete("/admin/live-traders/:id", requireAdmin, async (req, res) => {
   }
 });
 
+// ── POST /api/admin/deposits/:id/reverse ─────────────────────────────────────
+router.post("/admin/deposits/:id/reverse", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
+
+    const [dep] = await db.select().from(depositRequests).where(eq(depositRequests.id, id));
+    if (!dep) return void res.status(404).json({ error: "Deposit not found" });
+    if (dep.status !== "approved") return void res.status(409).json({ error: "Can only reverse approved deposits" });
+
+    // Deduct from trader balance (floor at 0)
+    if (dep.sessionId.startsWith("live-")) {
+      const traderId = parseInt(dep.sessionId.slice(5), 10);
+      if (!isNaN(traderId)) {
+        const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, traderId));
+        if (trader) {
+          const newBal = parseFloat(Math.max(0, trader.balance - dep.amount).toFixed(2));
+          await db.update(liveTraders).set({ balance: newBal }).where(eq(liveTraders.id, traderId));
+        }
+      }
+    }
+
+    await db.update(depositRequests)
+      .set({ status: "reversed", reviewedAt: new Date() })
+      .where(eq(depositRequests.id, id));
+
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/deposits/reverse error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── POST /api/admin/live-traders/:id/manual-deposit ───────────────────────────
+router.post("/admin/live-traders/:id/manual-deposit", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
+
+    const { amount, note } = req.body as { amount?: number; note?: string };
+    const amt = typeof amount === "number" ? amount : parseFloat(String(amount));
+    if (isNaN(amt) || amt === 0 || Math.abs(amt) > 10_000_000) {
+      return void res.status(400).json({ error: "Enter a valid amount (non-zero, max ±10,000,000)" });
+    }
+
+    const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, id));
+    if (!trader) return void res.status(404).json({ error: "Trader not found" });
+
+    const newBalance = parseFloat(Math.max(0, trader.balance + amt).toFixed(2));
+    await db.update(liveTraders).set({ balance: newBalance }).where(eq(liveTraders.id, id));
+
+    // Record as an approved deposit (positive) or reversed (negative adjustment)
+    await db.insert(depositRequests).values({
+      sessionId: `live-${id}`,
+      traderName: trader.fullName,
+      contact: trader.email,
+      amount: Math.abs(amt),
+      paymentMethod: amt > 0 ? "Admin Manual Credit" : "Admin Deduction",
+      paymentReference: note?.trim() || "Manual adjustment by admin",
+      status: amt > 0 ? "approved" : "reversed",
+      reviewedAt: new Date(),
+    });
+
+    res.json({ ok: true, newBalance });
+  } catch (err) {
+    req.log.error({ err }, "admin/manual-deposit error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
 // ── GET /api/admin/withdrawals ────────────────────────────────────────────────
 router.get("/admin/withdrawals", requireAdmin, async (req, res) => {
   try {

@@ -79,6 +79,7 @@ interface WithdrawalRequest {
 }
 
 type Tab = 'live-traders' | 'deposits' | 'withdrawals' | 'demo-accounts';
+type DepositFilter = 'all' | 'approved' | 'reversed' | 'pending';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const fmt$  = (n: number) => `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -513,18 +514,133 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
   );
 }
 
+// ── Manual Credit Modal ────────────────────────────────────────────────────────
+function ManualCreditModal({ traders, onDone, onClose }: {
+  traders: LiveTrader[];
+  onDone: () => void;
+  onClose: () => void;
+}) {
+  const [traderId, setTraderId] = useState('');
+  const [amount, setAmount]     = useState('');
+  const [note, setNote]         = useState('');
+  const [busy, setBusy]         = useState(false);
+  const [err, setErr]           = useState('');
+  const [done, setDone]         = useState<{ name: string; amount: number; newBalance: number } | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr('');
+    const amt = parseFloat(amount);
+    if (!traderId) { setErr('Select a trader.'); return; }
+    if (isNaN(amt) || amt === 0) { setErr('Enter a valid non-zero amount.'); return; }
+    setBusy(true);
+    try {
+      const res  = await fetch(`/api/admin/live-traders/${traderId}/manual-deposit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: amt, note }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
+      const trader = traders.find(t => t.id === parseInt(traderId));
+      setDone({ name: trader?.fullName ?? 'Trader', amount: amt, newBalance: data.newBalance });
+      onDone();
+    } catch { setErr('Network error.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-[hsl(220_28%_8%)] border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+        {done ? (
+          <div className="flex flex-col items-center text-center gap-3 py-2">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+              <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            </div>
+            <p className="font-bold">{done.name}</p>
+            <p className="text-sm text-muted-foreground">
+              {done.amount > 0
+                ? <><span className="text-emerald-400 font-bold font-mono">{fmt$(done.amount)}</span> credited. New balance: <span className="text-foreground font-mono font-bold">{fmt$(done.newBalance)}</span></>
+                : <><span className="text-red-400 font-bold font-mono">{fmt$(Math.abs(done.amount))}</span> deducted. New balance: <span className="text-foreground font-mono font-bold">{fmt$(done.newBalance)}</span></>
+              }
+            </p>
+            <button onClick={onClose} className="mt-2 px-6 h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition-all">Done</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base font-bold">Manual Balance Adjustment</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Credit or deduct funds from any live trader</p>
+              </div>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">✕</button>
+            </div>
+            {err && <div className="mb-3 text-xs text-red-400 bg-red-950/40 border border-red-800/40 rounded-lg px-3 py-2">{err}</div>}
+            <form onSubmit={submit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Trader</label>
+                <select value={traderId} onChange={e => setTraderId(e.target.value)} required
+                  className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50">
+                  <option value="">Select a trader…</option>
+                  {traders.map(t => (
+                    <option key={t.id} value={t.id}>{t.fullName} — {fmt$(t.balance)}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">
+                  Amount (USD) — use negative to deduct
+                </label>
+                <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                  placeholder="e.g. 500 or -200" step="0.01" required
+                  className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+                {amount && !isNaN(parseFloat(amount)) && (
+                  <p className={`text-[11px] mt-1 ${parseFloat(amount) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {parseFloat(amount) >= 0 ? '↑ Credit (adds to balance)' : '↓ Deduction (removes from balance)'}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Note / Reason</label>
+                <input type="text" value={note} onChange={e => setNote(e.target.value)}
+                  placeholder="e.g. Bonus credit, correction, etc."
+                  className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm border border-border rounded-xl text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                <button type="submit" disabled={busy}
+                  className="flex-1 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors">
+                  {busy ? 'Applying…' : 'Apply Adjustment'}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Deposits Tab ───────────────────────────────────────────────────────────────
 function DepositsTab({ onLogout, onStatsChange }: { onLogout: () => void; onStatsChange: () => void }) {
-  const [deposits, setDeposits] = useState<DepositRequest[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState('');
-  const [busy, setBusy]         = useState<Record<number, string>>({});
+  const [deposits, setDeposits]   = useState<DepositRequest[]>([]);
+  const [traders, setTraders]     = useState<LiveTrader[]>([]);
+  const [loading, setLoading]     = useState(true);
+  const [error, setError]         = useState('');
+  const [busy, setBusy]           = useState<Record<number, string>>({});
+  const [search, setSearch]       = useState('');
+  const [filter, setFilter]       = useState<DepositFilter>('all');
+  const [showCredit, setShowCredit] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/deposits');
-      if (res.status === 401) { onLogout(); return; }
-      setDeposits(await res.json());
+      const [dRes, tRes] = await Promise.all([
+        fetch('/api/admin/deposits'),
+        fetch('/api/admin/live-traders'),
+      ]);
+      if (dRes.status === 401) { onLogout(); return; }
+      setDeposits(await dRes.json());
+      if (tRes.ok) setTraders(await tRes.json());
     } catch { setError('Failed to load deposits'); }
     finally { setLoading(false); }
   }, [onLogout]);
@@ -539,69 +655,152 @@ function DepositsTab({ onLogout, onStatsChange }: { onLogout: () => void; onStat
     } finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
   }
 
-  const pending  = deposits.filter(d => d.status === 'pending');
-  const reviewed = deposits.filter(d => d.status !== 'pending');
+  async function reverse(id: number) {
+    if (!confirm('Reverse this deposit? The amount will be deducted from the trader\'s balance.')) return;
+    setBusy(b => ({ ...b, [id]: 'reverse' }));
+    try {
+      const res  = await fetch(`/api/admin/deposits/${id}/reverse`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) { alert(data.error ?? 'Failed'); return; }
+      await load(); onStatsChange();
+    } finally { setBusy(b => { const n = { ...b }; delete n[id]; return n; }); }
+  }
+
+  const visible = deposits.filter(d => {
+    const matchSearch = !search
+      || d.traderName.toLowerCase().includes(search.toLowerCase())
+      || d.paymentMethod.toLowerCase().includes(search.toLowerCase())
+      || d.paymentReference.toLowerCase().includes(search.toLowerCase());
+    const matchFilter = filter === 'all' || d.status === filter;
+    return matchSearch && matchFilter;
+  });
+
+  const counts: Record<DepositFilter, number> = {
+    all:      deposits.length,
+    pending:  deposits.filter(d => d.status === 'pending').length,
+    approved: deposits.filter(d => d.status === 'approved').length,
+    reversed: deposits.filter(d => d.status === 'reversed').length,
+  };
+
+  const totalApproved = deposits.filter(d => d.status === 'approved').reduce((s, d) => s + d.amount, 0);
+  const totalReversed = deposits.filter(d => d.status === 'reversed').reduce((s, d) => s + d.amount, 0);
 
   return (
     <div className="flex-1 p-6 overflow-y-auto">
       {error && <div className="mb-4 text-sm text-red-400 bg-red-950/40 border border-red-800/40 rounded-xl px-4 py-3">{error}</div>}
 
+      {/* Summary row */}
+      {!loading && deposits.length > 0 && (
+        <div className="grid grid-cols-3 gap-3 mb-5">
+          {[
+            { label: 'Total Credited', value: fmt$(totalApproved), color: 'text-emerald-400', bg: 'bg-emerald-500/5 border-emerald-500/20' },
+            { label: 'Total Reversed', value: fmt$(totalReversed), color: 'text-red-400',     bg: 'bg-red-500/5 border-red-500/20' },
+            { label: 'Net Deposited',  value: fmt$(totalApproved - totalReversed), color: 'text-blue-400', bg: 'bg-blue-500/5 border-blue-500/20' },
+          ].map(s => (
+            <div key={s.label} className={`rounded-xl border p-3.5 ${s.bg}`}>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{s.label}</div>
+              <div className={`text-lg font-black font-mono ${s.color}`}>{s.value}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Toolbar */}
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1">
+          <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="11" cy="11" r="8"/><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35"/></svg>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Search by name, method, or reference…"
+            className="w-full pl-9 pr-4 h-9 bg-[hsl(var(--input))] border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {(['all', 'approved', 'pending', 'reversed'] as DepositFilter[]).map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-3 h-9 rounded-xl text-xs font-semibold border transition-all capitalize flex items-center gap-1.5 ${filter === f ? 'bg-blue-600 border-blue-600 text-white' : 'border-border text-muted-foreground hover:text-foreground'}`}>
+              {f}
+              {counts[f] > 0 && <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${filter === f ? 'bg-white/20' : 'bg-white/5'}`}>{counts[f]}</span>}
+            </button>
+          ))}
+          <button onClick={() => setShowCredit(true)}
+            className="px-3.5 h-9 rounded-xl text-xs font-bold border border-blue-700/50 bg-blue-600/15 text-blue-400 hover:bg-blue-600/25 transition-all flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Manual Credit
+          </button>
+          <button onClick={load} title="Refresh" className="px-3 h-9 rounded-xl text-xs border border-border text-muted-foreground hover:text-foreground transition-all">↻</button>
+        </div>
+      </div>
+
       {loading ? (
         <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">Loading…</div>
-      ) : deposits.length === 0 ? (
-        <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">No deposit requests yet</div>
-      ) : (
-        <div className="flex flex-col gap-8 max-w-3xl">
-          {pending.length > 0 && (
-            <section>
-              <div className="flex items-center gap-2 mb-4">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-amber-400">Pending</h3>
-                <span className="text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/25 px-2 py-0.5 rounded-full">{pending.length}</span>
-              </div>
-              <div className="flex flex-col gap-3">
-                {pending.map(dep => <DepositCard key={dep.id} dep={dep} busy={busy} onReview={review} />)}
-              </div>
-            </section>
-          )}
-          {reviewed.length > 0 && (
-            <section>
-              <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground mb-4">History · {reviewed.length}</h3>
-              <div className="flex flex-col gap-3">
-                {reviewed.map(dep => <DepositCard key={dep.id} dep={dep} busy={busy} onReview={review} />)}
-              </div>
-            </section>
-          )}
+      ) : visible.length === 0 ? (
+        <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">
+          {deposits.length === 0 ? 'No deposit records yet' : 'No deposits match your filter'}
         </div>
+      ) : (
+        <div className="flex flex-col gap-3 max-w-3xl">
+          {visible.map(dep => (
+            <DepositCard key={dep.id} dep={dep} busy={busy} onReview={review} onReverse={reverse} />
+          ))}
+          <div className="text-[11px] text-muted-foreground/40 text-center pt-1">
+            {visible.length} record{visible.length !== 1 ? 's' : ''}{search || filter !== 'all' ? ` (filtered from ${deposits.length})` : ''}
+          </div>
+        </div>
+      )}
+
+      {showCredit && (
+        <ManualCreditModal
+          traders={traders}
+          onDone={() => { load(); onStatsChange(); }}
+          onClose={() => setShowCredit(false)}
+        />
       )}
     </div>
   );
 }
 
-function DepositCard({ dep, busy, onReview }: {
-  dep: DepositRequest; busy: Record<number, string>; onReview: (id: number, a: 'approve' | 'reject') => void;
+function DepositCard({ dep, busy, onReview, onReverse }: {
+  dep: DepositRequest;
+  busy: Record<number, string>;
+  onReview: (id: number, a: 'approve' | 'reject') => void;
+  onReverse: (id: number) => void;
 }) {
-  const isLive = dep.sessionId.startsWith('live-');
+  const isLive    = dep.sessionId.startsWith('live-');
+  const isManual  = dep.paymentMethod === 'Admin Manual Credit' || dep.paymentMethod === 'Admin Deduction';
+  const statusColor = dep.status === 'approved' ? 'green'
+    : dep.status === 'rejected' ? 'red'
+    : dep.status === 'reversed' ? 'gray'
+    : 'amber';
+
   return (
-    <div className="bg-[hsl(220_28%_7%)] border border-border rounded-2xl p-5 flex flex-col gap-3">
+    <div className={`bg-[hsl(220_28%_7%)] border rounded-2xl p-5 flex flex-col gap-3 transition-colors ${dep.status === 'reversed' ? 'border-border/40 opacity-70' : 'border-border'}`}>
       <div className="flex items-start justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-0.5">
+          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
             <p className="font-semibold text-sm">{dep.traderName}</p>
             {isLive && <Badge color="green">Live</Badge>}
+            {isManual && <Badge color="blue">Admin</Badge>}
           </div>
           <p className="text-xs text-muted-foreground">{dep.contact}</p>
         </div>
         <div className="flex flex-col items-end gap-1.5">
-          <span className="font-bold font-mono text-emerald-400 text-lg">{fmt$(dep.amount)}</span>
-          <Badge color={dep.status === 'approved' ? 'green' : dep.status === 'rejected' ? 'red' : 'amber'}>{dep.status}</Badge>
+          <span className={`font-bold font-mono text-lg ${dep.status === 'reversed' ? 'text-red-400 line-through opacity-60' : 'text-emerald-400'}`}>
+            {fmt$(dep.amount)}
+          </span>
+          <Badge color={statusColor as any}>{dep.status}</Badge>
         </div>
       </div>
+
       <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-[11px]">
         <span className="text-muted-foreground"><span className="text-muted-foreground/50">Method: </span>{dep.paymentMethod}</span>
         <span className="text-muted-foreground"><span className="text-muted-foreground/50">Ref: </span>{dep.paymentReference}</span>
-        <span className="text-muted-foreground"><span className="text-muted-foreground/50">Account: </span><code className="text-blue-400">{dep.sessionId.slice(0, 14)}…</code></span>
-        <span className="text-muted-foreground"><span className="text-muted-foreground/50">Date: </span>{fmtDate(dep.createdAt)}</span>
+        <span className="text-muted-foreground"><span className="text-muted-foreground/50">Account: </span>
+          <code className="text-blue-400">{isLive ? `Trader #${dep.sessionId.slice(5)}` : dep.sessionId.slice(0, 12) + '…'}</code>
+        </span>
+        <span className="text-muted-foreground"><span className="text-muted-foreground/50">
+          {dep.status === 'pending' ? 'Submitted: ' : dep.status === 'approved' ? 'Credited: ' : 'Date: '}
+        </span>{fmtDate(dep.status === 'pending' ? dep.createdAt : (dep.reviewedAt ?? dep.createdAt))}</span>
       </div>
+
       {dep.status === 'pending' && (
         <div className="flex gap-2 pt-1 border-t border-border">
           <button onClick={() => onReview(dep.id, 'reject')} disabled={!!busy[dep.id]}
@@ -611,6 +810,18 @@ function DepositCard({ dep, busy, onReview }: {
           <button onClick={() => onReview(dep.id, 'approve')} disabled={!!busy[dep.id]}
             className="flex-1 py-2.5 text-xs bg-emerald-700/30 hover:bg-emerald-700/50 border border-emerald-700/40 text-emerald-400 rounded-xl transition-colors disabled:opacity-40 font-semibold">
             {busy[dep.id] === 'approve' ? 'Approving…' : '✓ Approve & Credit'}
+          </button>
+        </div>
+      )}
+
+      {dep.status === 'approved' && !isManual && (
+        <div className="flex justify-end pt-1 border-t border-border">
+          <button onClick={() => onReverse(dep.id)} disabled={!!busy[dep.id]}
+            className="px-4 py-2 text-xs border border-red-900/40 text-red-400/60 hover:text-red-400 hover:border-red-700/50 hover:bg-red-500/5 rounded-xl transition-colors disabled:opacity-40 font-semibold flex items-center gap-1.5">
+            {busy[dep.id] === 'reverse'
+              ? 'Reversing…'
+              : <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/></svg> Reverse Deposit</>
+            }
           </button>
         </div>
       )}
