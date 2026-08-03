@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { eq, count, sum, gt, desc } from "drizzle-orm";
 import {
   db, forexAccounts, forexPositions, forexClosedTrades,
-  liveTraders, depositRequests, withdrawalRequests,
+  liveTraders, depositRequests, withdrawalRequests, companyWalletTransactions,
 } from "@workspace/db";
 import { adminSessions } from "../lib/admin-sessions";
 import { getPriceSnapshot, calcPnl } from "../lib/forex-sim";
@@ -365,12 +365,19 @@ router.post("/admin/deposits/:id/reverse", requireAdmin, async (req, res) => {
 });
 
 // ── POST /api/admin/live-traders/:id/manual-deposit ───────────────────────────
+// destination: "none" | "company" | "trader"
+// destinationTraderId: required when destination === "trader"
 router.post("/admin/live-traders/:id/manual-deposit", requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
 
-    const { amount, note } = req.body as { amount?: number; note?: string };
+    const { amount, note, destination, destinationTraderId } = req.body as {
+      amount?: number;
+      note?: string;
+      destination?: "none" | "company" | "trader";
+      destinationTraderId?: number;
+    };
     const amt = typeof amount === "number" ? amount : parseFloat(String(amount));
     if (isNaN(amt) || amt === 0 || Math.abs(amt) > 10_000_000) {
       return void res.status(400).json({ error: "Enter a valid amount (non-zero, max ±10,000,000)" });
@@ -383,20 +390,103 @@ router.post("/admin/live-traders/:id/manual-deposit", requireAdmin, async (req, 
     await db.update(liveTraders).set({ balance: newBalance }).where(eq(liveTraders.id, id));
 
     // Record as an approved deposit (positive) or reversed (negative adjustment)
+    const dest = amt < 0 ? (destination ?? "none") : "none";
+    const noteText = note?.trim() || "Manual adjustment by admin";
+
     await db.insert(depositRequests).values({
       sessionId: `live-${id}`,
       traderName: trader.fullName,
       contact: trader.email,
       amount: Math.abs(amt),
       paymentMethod: amt > 0 ? "Admin Manual Credit" : "Admin Deduction",
-      paymentReference: note?.trim() || "Manual adjustment by admin",
+      paymentReference: noteText,
       status: amt > 0 ? "approved" : "reversed",
       reviewedAt: new Date(),
     });
 
+    // ── Handle deduction destinations ─────────────────────────────────────────
+    if (amt < 0) {
+      const deductedAmt = Math.abs(amt);
+
+      if (dest === "company") {
+        // Credit company wallet
+        await db.insert(companyWalletTransactions).values({
+          type: "credit",
+          amount: deductedAmt,
+          note: noteText,
+          fromTraderId: trader.id,
+          fromTraderName: trader.fullName,
+        });
+      } else if (dest === "trader" && destinationTraderId) {
+        const destId = typeof destinationTraderId === "number"
+          ? destinationTraderId
+          : parseInt(String(destinationTraderId), 10);
+        const [destTrader] = await db.select().from(liveTraders).where(eq(liveTraders.id, destId));
+        if (!destTrader) return void res.status(404).json({ error: "Destination trader not found" });
+
+        // Credit destination trader
+        const destNewBalance = parseFloat((destTrader.balance + deductedAmt).toFixed(2));
+        await db.update(liveTraders).set({ balance: destNewBalance }).where(eq(liveTraders.id, destId));
+
+        // Record the credit in deposit history for destination trader
+        await db.insert(depositRequests).values({
+          sessionId: `live-${destId}`,
+          traderName: destTrader.fullName,
+          contact: destTrader.email,
+          amount: deductedAmt,
+          paymentMethod: "Admin Transfer",
+          paymentReference: `Transfer from ${trader.fullName}${noteText !== "Manual adjustment by admin" ? ` — ${noteText}` : ""}`,
+          status: "approved",
+          reviewedAt: new Date(),
+        });
+
+        // Log in company wallet as a pass-through transfer
+        await db.insert(companyWalletTransactions).values({
+          type: "credit",
+          amount: deductedAmt,
+          note: `Transfer: ${trader.fullName} → ${destTrader.fullName}${noteText !== "Manual adjustment by admin" ? ` — ${noteText}` : ""}`,
+          fromTraderId: trader.id,
+          fromTraderName: trader.fullName,
+          toTraderId: destTrader.id,
+          toTraderName: destTrader.fullName,
+        });
+        await db.insert(companyWalletTransactions).values({
+          type: "debit",
+          amount: deductedAmt,
+          note: `Transfer: ${trader.fullName} → ${destTrader.fullName}${noteText !== "Manual adjustment by admin" ? ` — ${noteText}` : ""}`,
+          fromTraderId: trader.id,
+          fromTraderName: trader.fullName,
+          toTraderId: destTrader.id,
+          toTraderName: destTrader.fullName,
+        });
+
+        return void res.json({ ok: true, newBalance, destNewBalance, destTraderName: destTrader.fullName });
+      }
+    }
+
     res.json({ ok: true, newBalance });
   } catch (err) {
     req.log.error({ err }, "admin/manual-deposit error");
+    res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── GET /api/admin/company-wallet ─────────────────────────────────────────────
+router.get("/admin/company-wallet", requireAdmin, async (req, res) => {
+  try {
+    const txns = await db
+      .select()
+      .from(companyWalletTransactions)
+      .orderBy(desc(companyWalletTransactions.createdAt))
+      .limit(200);
+
+    const balance = txns.reduce((acc, t) => {
+      return t.type === "credit" ? acc + t.amount : acc - t.amount;
+    }, 0);
+
+    res.json({ balance: parseFloat(balance.toFixed(2)), transactions: txns });
+  } catch (err) {
+    req.log.error({ err }, "admin/company-wallet error");
     res.status(500).json({ error: "Failed" });
   }
 });

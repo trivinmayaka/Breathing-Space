@@ -78,7 +78,19 @@ interface WithdrawalRequest {
   reviewedAt: string | null;
 }
 
-type Tab = 'live-traders' | 'deposits' | 'withdrawals' | 'demo-accounts';
+interface CompanyWalletTxn {
+  id: number;
+  type: 'credit' | 'debit';
+  amount: number;
+  note: string | null;
+  fromTraderId: number | null;
+  fromTraderName: string | null;
+  toTraderId: number | null;
+  toTraderName: string | null;
+  createdAt: string | null;
+}
+
+type Tab = 'live-traders' | 'deposits' | 'withdrawals' | 'demo-accounts' | 'company-wallet';
 type DepositFilter = 'all' | 'approved' | 'reversed' | 'pending';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -515,39 +527,73 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
 }
 
 // ── Manual Credit Modal ────────────────────────────────────────────────────────
+type DeductDestination = 'none' | 'company' | 'trader';
+
 function ManualCreditModal({ traders, onDone, onClose }: {
   traders: LiveTrader[];
   onDone: () => void;
   onClose: () => void;
 }) {
-  const [traderId, setTraderId] = useState('');
-  const [amount, setAmount]     = useState('');
-  const [note, setNote]         = useState('');
-  const [busy, setBusy]         = useState(false);
-  const [err, setErr]           = useState('');
-  const [done, setDone]         = useState<{ name: string; amount: number; newBalance: number } | null>(null);
+  const [traderId, setTraderId]         = useState('');
+  const [amount, setAmount]             = useState('');
+  const [note, setNote]                 = useState('');
+  const [destination, setDestination]   = useState<DeductDestination>('none');
+  const [destTraderId, setDestTraderId] = useState('');
+  const [busy, setBusy]                 = useState(false);
+  const [err, setErr]                   = useState('');
+  const [done, setDone]                 = useState<{
+    name: string; amount: number; newBalance: number;
+    destTraderName?: string; destNewBalance?: number; destination: DeductDestination;
+  } | null>(null);
+
+  const amt       = parseFloat(amount);
+  const isDeduct  = !isNaN(amt) && amt < 0;
+  const isCredit  = !isNaN(amt) && amt > 0;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr('');
-    const amt = parseFloat(amount);
     if (!traderId) { setErr('Select a trader.'); return; }
     if (isNaN(amt) || amt === 0) { setErr('Enter a valid non-zero amount.'); return; }
+    if (isDeduct && destination === 'trader' && !destTraderId) {
+      setErr('Select a destination trader.'); return;
+    }
+    if (isDeduct && destination === 'trader' && destTraderId === traderId) {
+      setErr('Source and destination traders must be different.'); return;
+    }
     setBusy(true);
     try {
+      const body: Record<string, unknown> = { amount: amt, note };
+      if (isDeduct) {
+        body.destination = destination;
+        if (destination === 'trader') body.destinationTraderId = parseInt(destTraderId);
+      }
       const res  = await fetch(`/api/admin/live-traders/${traderId}/manual-deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount: amt, note }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
       const trader = traders.find(t => t.id === parseInt(traderId));
-      setDone({ name: trader?.fullName ?? 'Trader', amount: amt, newBalance: data.newBalance });
+      setDone({
+        name: trader?.fullName ?? 'Trader',
+        amount: amt,
+        newBalance: data.newBalance,
+        destTraderName: data.destTraderName,
+        destNewBalance: data.destNewBalance,
+        destination,
+      });
       onDone();
     } catch { setErr('Network error.'); }
     finally { setBusy(false); }
   }
+
+  const DEST_OPTIONS: { value: DeductDestination; label: string; desc: string; color: string }[] = [
+    { value: 'none',    label: 'No destination',    desc: 'Funds simply removed',                  color: 'border-border text-muted-foreground'         },
+    { value: 'company', label: 'Company Wallet',    desc: 'Credited to house balance',             color: 'border-blue-500/50 text-blue-400 bg-blue-500/5'   },
+    { value: 'trader',  label: 'Transfer to Trader', desc: 'Credited to another trader\'s account', color: 'border-amber-500/50 text-amber-400 bg-amber-500/5' },
+  ];
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -564,6 +610,16 @@ function ManualCreditModal({ traders, onDone, onClose }: {
                 : <><span className="text-red-400 font-bold font-mono">{fmt$(Math.abs(done.amount))}</span> deducted. New balance: <span className="text-foreground font-mono font-bold">{fmt$(done.newBalance)}</span></>
               }
             </p>
+            {done.destination === 'company' && (
+              <p className="text-xs text-blue-400 bg-blue-500/10 border border-blue-500/20 rounded-lg px-3 py-2">
+                🏦 Credited to Company Wallet
+              </p>
+            )}
+            {done.destination === 'trader' && done.destTraderName && (
+              <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                ↗ Transferred to <strong>{done.destTraderName}</strong> · New balance: {fmt$(done.destNewBalance ?? 0)}
+              </p>
+            )}
             <button onClick={onClose} className="mt-2 px-6 h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition-all">Done</button>
           </div>
         ) : (
@@ -577,6 +633,7 @@ function ManualCreditModal({ traders, onDone, onClose }: {
             </div>
             {err && <div className="mb-3 text-xs text-red-400 bg-red-950/40 border border-red-800/40 rounded-lg px-3 py-2">{err}</div>}
             <form onSubmit={submit} className="space-y-4">
+              {/* Source trader */}
               <div>
                 <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Trader</label>
                 <select value={traderId} onChange={e => setTraderId(e.target.value)} required
@@ -587,25 +644,71 @@ function ManualCreditModal({ traders, onDone, onClose }: {
                   ))}
                 </select>
               </div>
+
+              {/* Amount */}
               <div>
                 <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">
                   Amount (USD) — use negative to deduct
                 </label>
-                <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+                <input type="number" value={amount} onChange={e => { setAmount(e.target.value); setDestination('none'); setDestTraderId(''); }}
                   placeholder="e.g. 500 or -200" step="0.01" required
                   className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
-                {amount && !isNaN(parseFloat(amount)) && (
-                  <p className={`text-[11px] mt-1 ${parseFloat(amount) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {parseFloat(amount) >= 0 ? '↑ Credit (adds to balance)' : '↓ Deduction (removes from balance)'}
+                {amount && !isNaN(amt) && (
+                  <p className={`text-[11px] mt-1 ${isCredit ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {isCredit ? '↑ Credit (adds to balance)' : '↓ Deduction (removes from balance)'}
                   </p>
                 )}
               </div>
+
+              {/* Destination — only shown for deductions */}
+              {isDeduct && (
+                <div>
+                  <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-2">
+                    Send deducted funds to
+                  </label>
+                  <div className="flex flex-col gap-2">
+                    {DEST_OPTIONS.map(opt => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => { setDestination(opt.value); setDestTraderId(''); }}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl border text-left transition-all ${
+                          destination === opt.value ? opt.color : 'border-border text-muted-foreground hover:border-border/80 hover:text-foreground'
+                        }`}
+                      >
+                        <span className={`w-3.5 h-3.5 rounded-full border-2 flex-shrink-0 ${destination === opt.value ? 'border-current bg-current' : 'border-muted-foreground/40'}`} />
+                        <div>
+                          <p className="text-xs font-semibold leading-tight">{opt.label}</p>
+                          <p className="text-[10px] text-muted-foreground leading-tight mt-0.5">{opt.desc}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Destination trader picker */}
+                  {destination === 'trader' && (
+                    <div className="mt-3">
+                      <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Destination Trader</label>
+                      <select value={destTraderId} onChange={e => setDestTraderId(e.target.value)} required
+                        className="w-full bg-[hsl(var(--input))] border border-amber-500/30 rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-amber-500/50">
+                        <option value="">Select destination trader…</option>
+                        {traders.filter(t => t.id !== parseInt(traderId || '0')).map(t => (
+                          <option key={t.id} value={t.id}>{t.fullName} — {fmt$(t.balance)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Note */}
               <div>
                 <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Note / Reason</label>
                 <input type="text" value={note} onChange={e => setNote(e.target.value)}
-                  placeholder="e.g. Bonus credit, correction, etc."
+                  placeholder="e.g. Profit withdrawal, correction, etc."
                   className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
               </div>
+
               <div className="flex gap-2 pt-1">
                 <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm border border-border rounded-xl text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
                 <button type="submit" disabled={busy}
@@ -823,6 +926,122 @@ function DepositCard({ dep, busy, onReview, onReverse }: {
               : <><svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 15L3 9m0 0l6-6M3 9h12a6 6 0 010 12h-3"/></svg> Reverse Deposit</>
             }
           </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Company Wallet Tab ─────────────────────────────────────────────────────────
+function CompanyWalletTab({ onLogout }: { onLogout: () => void }) {
+  const [balance, setBalance]   = useState<number | null>(null);
+  const [txns, setTxns]         = useState<CompanyWalletTxn[]>([]);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/admin/company-wallet');
+      if (res.status === 401) { onLogout(); return; }
+      const data = await res.json();
+      setBalance(data.balance);
+      setTxns(data.transactions);
+    } catch { setError('Failed to load company wallet'); }
+    finally { setLoading(false); }
+  }, [onLogout]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const totalCredits = txns.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+  const totalDebits  = txns.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0);
+
+  return (
+    <div className="flex-1 p-6 overflow-y-auto">
+      {error && <div className="mb-4 text-sm text-red-400 bg-red-950/40 border border-red-800/40 rounded-xl px-4 py-3">{error}</div>}
+
+      {/* Balance hero */}
+      {!loading && balance !== null && (
+        <div className="mb-6">
+          <div className="bg-gradient-to-br from-blue-600/10 to-blue-600/5 border border-blue-500/20 rounded-2xl p-6 flex flex-col gap-1 max-w-sm">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground">Company Wallet Balance</p>
+            <p className={`text-4xl font-black font-mono ${balance >= 0 ? 'text-blue-400' : 'text-red-400'}`}>{fmt$(balance)}</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Net inflow from trader deductions &amp; transfers</p>
+          </div>
+
+          {txns.length > 0 && (
+            <div className="grid grid-cols-2 gap-3 mt-4 max-w-sm">
+              {[
+                { label: 'Total In',  value: fmt$(totalCredits), color: 'text-emerald-400', bg: 'bg-emerald-500/5 border-emerald-500/20' },
+                { label: 'Total Out', value: fmt$(totalDebits),  color: 'text-red-400',     bg: 'bg-red-500/5 border-red-500/20' },
+              ].map(s => (
+                <div key={s.label} className={`rounded-xl border p-3.5 ${s.bg}`}>
+                  <div className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1">{s.label}</div>
+                  <div className={`text-lg font-black font-mono ${s.color}`}>{s.value}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Transaction history */}
+      <div className="flex items-center justify-between mb-4 max-w-3xl">
+        <h3 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Transaction History</h3>
+        <button onClick={load} title="Refresh" className="text-xs text-muted-foreground hover:text-foreground transition-colors">↻ Refresh</button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-48 text-muted-foreground text-sm">Loading…</div>
+      ) : txns.length === 0 ? (
+        <div className="flex flex-col items-center justify-center h-48 gap-3 text-center">
+          <div className="w-12 h-12 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-2xl">🏦</div>
+          <p className="text-sm text-muted-foreground">No wallet activity yet</p>
+          <p className="text-xs text-muted-foreground/60 max-w-xs">When you deduct funds from a trader and send them to the Company Wallet, they'll appear here.</p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2 max-w-3xl">
+          {txns.map(t => {
+            const isTransfer = t.fromTraderId !== null && t.toTraderId !== null;
+            return (
+              <div key={t.id} className={`bg-[hsl(220_28%_7%)] border rounded-xl px-4 py-3.5 flex items-start justify-between gap-4 ${
+                t.type === 'credit' && !isTransfer ? 'border-emerald-900/40' : isTransfer ? 'border-amber-900/30' : 'border-border'
+              }`}>
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className={`mt-0.5 w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center text-sm ${
+                    isTransfer ? 'bg-amber-500/15' : t.type === 'credit' ? 'bg-emerald-500/15' : 'bg-red-500/15'
+                  }`}>
+                    {isTransfer ? '↗' : t.type === 'credit' ? '↙' : '↗'}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold leading-snug">
+                      {isTransfer
+                        ? `Transfer: ${t.fromTraderName} → ${t.toTraderName}`
+                        : t.type === 'credit'
+                          ? `Received from ${t.fromTraderName ?? 'Unknown'}`
+                          : `Sent to ${t.toTraderName ?? 'Unknown'}`
+                      }
+                    </p>
+                    {t.note && <p className="text-[11px] text-muted-foreground mt-0.5 truncate">{t.note}</p>}
+                    <p className="text-[10px] text-muted-foreground/50 mt-0.5">{fmtDate(t.createdAt)}</p>
+                  </div>
+                </div>
+                <div className="flex flex-col items-end shrink-0">
+                  <span className={`font-bold font-mono text-sm ${
+                    isTransfer ? 'text-amber-400' : t.type === 'credit' ? 'text-emerald-400' : 'text-red-400'
+                  }`}>
+                    {t.type === 'credit' ? '+' : '−'}{fmt$(t.amount)}
+                  </span>
+                  <span className={`text-[9px] uppercase tracking-wider mt-0.5 ${
+                    isTransfer ? 'text-amber-600' : t.type === 'credit' ? 'text-emerald-700' : 'text-red-700'
+                  }`}>
+                    {isTransfer ? 'transfer' : t.type}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+          <p className="text-[11px] text-muted-foreground/40 text-center pt-1">{txns.length} transaction{txns.length !== 1 ? 's' : ''}</p>
         </div>
       )}
     </div>
@@ -1052,10 +1271,11 @@ function DemoAccountsTab({ onLogout }: { onLogout: () => void }) {
 
 // ── Main Dashboard ─────────────────────────────────────────────────────────────
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'live-traders',  label: '🟢 Live Traders' },
-  { id: 'deposits',      label: '💰 Deposits' },
-  { id: 'withdrawals',   label: '💸 Withdrawals' },
-  { id: 'demo-accounts', label: 'Demo Accounts' },
+  { id: 'live-traders',    label: '🟢 Live Traders' },
+  { id: 'deposits',        label: '💰 Deposits' },
+  { id: 'withdrawals',     label: '💸 Withdrawals' },
+  { id: 'company-wallet',  label: '🏦 Company Wallet' },
+  { id: 'demo-accounts',   label: 'Demo Accounts' },
 ];
 
 export default function AdminDashboard({ onLogout, onBack }: { onLogout: () => void; onBack?: () => void }) {
@@ -1132,10 +1352,11 @@ export default function AdminDashboard({ onLogout, onBack }: { onLogout: () => v
       </div>
 
       {/* Content */}
-      {tab === 'live-traders'  && <LiveTradersTab  onLogout={onLogout} onStatsChange={loadStats} />}
-      {tab === 'deposits'      && <DepositsTab     onLogout={onLogout} onStatsChange={loadStats} />}
-      {tab === 'withdrawals'   && <WithdrawalsTab  onLogout={onLogout} onStatsChange={loadStats} />}
-      {tab === 'demo-accounts' && <DemoAccountsTab onLogout={onLogout} />}
+      {tab === 'live-traders'   && <LiveTradersTab   onLogout={onLogout} onStatsChange={loadStats} />}
+      {tab === 'deposits'       && <DepositsTab      onLogout={onLogout} onStatsChange={loadStats} />}
+      {tab === 'withdrawals'    && <WithdrawalsTab   onLogout={onLogout} onStatsChange={loadStats} />}
+      {tab === 'company-wallet' && <CompanyWalletTab onLogout={onLogout} />}
+      {tab === 'demo-accounts'  && <DemoAccountsTab  onLogout={onLogout} />}
     </div>
   );
 }

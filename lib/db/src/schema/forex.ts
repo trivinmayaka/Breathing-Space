@@ -72,6 +72,24 @@ export const withdrawalRequests = pgTable("withdrawal_requests", {
   reviewedAt:     timestamp("reviewed_at"),
 });
 
+// ── Company wallet ─────────────────────────────────────────────────────────────
+// Tracks all fund movements in/out of the house (company) balance.
+// type: "credit" = funds received by company (e.g. deduction from trader)
+//       "debit"  = funds sent from company (e.g. payout, write-off)
+export const companyWalletTransactions = pgTable("company_wallet_transactions", {
+  id:                serial("id").primaryKey(),
+  type:              text("type").notNull(),              // "credit" | "debit"
+  amount:            real("amount").notNull(),            // always positive
+  note:              text("note"),
+  fromTraderId:      integer("from_trader_id"),           // trader funds were taken from
+  fromTraderName:    text("from_trader_name"),
+  toTraderId:        integer("to_trader_id"),             // trader funds were sent to (transfer)
+  toTraderName:      text("to_trader_name"),
+  createdAt:         timestamp("created_at").defaultNow(),
+});
+
+export type CompanyWalletTransaction = typeof companyWalletTransactions.$inferSelect;
+
 export const insertForexPositionSchema = createInsertSchema(forexPositions).omit({ id: true, openedAt: true });
 export type InsertForexPosition = z.infer<typeof insertForexPositionSchema>;
 export type ForexPosition     = typeof forexPositions.$inferSelect;
