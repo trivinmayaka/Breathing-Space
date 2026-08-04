@@ -245,7 +245,7 @@ function TradeHistoryModal({ trader, onClose }: { trader: LiveTrader; onClose: (
   useEffect(() => {
     fetch(`/api/admin/live-traders/${trader.id}/trades`)
       .then(r => r.json())
-      .then(data => { setTrades(data); setLoading(false); });
+      .then(data => { setTrades(Array.isArray(data) ? data : []); setLoading(false); });
   }, [trader.id]);
 
   const totalPnl = trades.reduce((s, t) => s + t.pnl, 0);
@@ -334,7 +334,9 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
     try {
       const res = await fetch('/api/admin/live-traders');
       if (res.status === 401) { onLogout(); return; }
-      setTraders(await res.json());
+      const data = await res.json();
+      if (!res.ok) { setError(data?.error ?? 'Failed to load live traders'); setLoading(false); return; }
+      setTraders(Array.isArray(data) ? data : []);
       setError('');
     } catch { setError('Failed to load live traders'); }
     finally { setLoading(false); }
@@ -742,8 +744,10 @@ function DepositsTab({ onLogout, onStatsChange }: { onLogout: () => void; onStat
         fetch('/api/admin/live-traders'),
       ]);
       if (dRes.status === 401) { onLogout(); return; }
-      setDeposits(await dRes.json());
-      if (tRes.ok) setTraders(await tRes.json());
+      const dData = await dRes.json();
+      if (!dRes.ok) { setError(dData?.error ?? 'Failed to load deposits'); setLoading(false); return; }
+      setDeposits(Array.isArray(dData) ? dData : []);
+      if (tRes.ok) { const tData = await tRes.json(); setTraders(Array.isArray(tData) ? tData : []); }
     } catch { setError('Failed to load deposits'); }
     finally { setLoading(false); }
   }, [onLogout]);
@@ -1060,7 +1064,9 @@ function WithdrawalsTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
     try {
       const res = await fetch('/api/admin/withdrawals');
       if (res.status === 401) { onLogout(); return; }
-      setItems(await res.json());
+      const data = await res.json();
+      if (!res.ok) { setError(data?.error ?? 'Failed to load withdrawals'); setLoading(false); return; }
+      setItems(Array.isArray(data) ? data : []);
     } catch { setError('Failed to load withdrawals'); }
     finally { setLoading(false); }
   }, [onLogout]);
@@ -1176,7 +1182,9 @@ function DemoAccountsTab({ onLogout }: { onLogout: () => void }) {
     try {
       const res = await fetch('/api/admin/accounts');
       if (res.status === 401) { onLogout(); return; }
-      setAccounts(await res.json());
+      const data = await res.json();
+      if (!res.ok) { setError(data?.error ?? 'Failed to load accounts'); setLoading(false); return; }
+      setAccounts(Array.isArray(data) ? data : []);
     } catch { setError('Failed to load accounts'); }
     finally { setLoading(false); }
   }, [onLogout]);
