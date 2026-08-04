@@ -139,60 +139,41 @@ function IconBtn({
 
 // ── Stats Bar ──────────────────────────────────────────────────────────────────
 function StatsBar({ stats, onTabChange }: { stats: Stats; onTabChange: (tab: Tab) => void }) {
-  const cards = [
-    {
-      label: 'Live Traders',
-      value: stats.liveTraderCount,
-      sub: stats.suspendedCount > 0 ? `${stats.suspendedCount} suspended` : 'all active',
-      color: 'text-blue-400',
-      icon: '👥',
-    },
-    {
-      label: 'Pending Deposits',
-      value: stats.pendingDeposits,
-      sub: 'awaiting approval',
-      color: stats.pendingDeposits > 0 ? 'text-amber-400' : 'text-muted-foreground',
-      icon: '💰',
-      tab: 'deposits' as Tab,
-      urgent: stats.pendingDeposits > 0,
-    },
-    {
-      label: 'Pending Withdrawals',
-      value: stats.pendingWithdrawals,
-      sub: 'awaiting approval',
-      color: stats.pendingWithdrawals > 0 ? 'text-amber-400' : 'text-muted-foreground',
-      icon: '💸',
-      tab: 'withdrawals' as Tab,
-      urgent: stats.pendingWithdrawals > 0,
-    },
-    {
-      label: 'Total Live Balance',
-      value: fmt$(stats.totalLiveBalance),
-      sub: `across ${stats.liveTraderCount} trader${stats.liveTraderCount !== 1 ? 's' : ''}`,
-      color: 'text-emerald-400',
-      icon: '📊',
-      isString: true,
-    },
+  type Card = { label: string; value: string; sub: string; color: string; icon: string; tab?: Tab; urgent?: boolean };
+  const row1: Card[] = [
+    { label: 'Live Traders',       value: String(stats.liveTraderCount),   sub: stats.suspendedCount > 0 ? `${stats.suspendedCount} suspended` : 'all active', color: 'text-blue-400',    icon: '👥', tab: 'live-traders' },
+    { label: 'Pending Deposits',   value: String(stats.pendingDeposits),   sub: 'awaiting approval',   color: stats.pendingDeposits > 0   ? 'text-amber-400'   : 'text-muted-foreground', icon: '💰', tab: 'deposits',   urgent: stats.pendingDeposits > 0 },
+    { label: 'Pending Withdrawals',value: String(stats.pendingWithdrawals),sub: 'awaiting approval',   color: stats.pendingWithdrawals > 0 ? 'text-amber-400'   : 'text-muted-foreground', icon: '💸', tab: 'withdrawals', urgent: stats.pendingWithdrawals > 0 },
+    { label: 'Total Live Balance', value: fmt$(stats.totalLiveBalance),    sub: `across ${stats.liveTraderCount} trader${stats.liveTraderCount !== 1 ? 's' : ''}`, color: 'text-emerald-400', icon: '📊' },
+  ];
+  const row2: Card[] = [
+    { label: 'Demo Accounts',  value: String(stats.totalAccounts),                       sub: `${stats.openPositions} open position${stats.openPositions !== 1 ? 's' : ''}`, color: 'text-purple-400', icon: '🧪', tab: 'demo-accounts' },
+    { label: 'Total Trades',   value: stats.totalTrades.toLocaleString(),                sub: 'all time closed',  color: 'text-sky-400',     icon: '📈' },
+    { label: 'Platform P&L',   value: stats.totalTrades > 0 ? pnlStr(stats.totalPnl) : '—', sub: 'sum of closed trades', color: pnlCls(stats.totalPnl), icon: '💹' },
+    { label: 'Win Rate',       value: stats.totalTrades > 0 ? `${stats.winRate}%` : '—', sub: stats.totalTrades > 0 ? `${stats.totalTrades} trades` : 'no trades yet', color: stats.winRate >= 50 ? 'text-emerald-400' : stats.winRate > 0 ? 'text-amber-400' : 'text-muted-foreground', icon: '🎯' },
+    { label: 'Company Wallet', value: '→ View',                                          sub: 'wallet & transactions', color: 'text-blue-400', icon: '🏦', tab: 'company-wallet' },
   ];
 
+  const Card = ({ c }: { c: Card }) => (
+    <div onClick={() => c.tab && onTabChange(c.tab)}
+      className={`rounded-xl border p-3.5 transition-all ${c.urgent ? 'border-amber-500/30 bg-amber-500/5' : 'border-border bg-white/[0.02]'} ${c.tab ? 'cursor-pointer hover:border-border/80 hover:bg-white/[0.04]' : ''}`}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider leading-tight">{c.label}</span>
+        <span className="text-sm">{c.icon}</span>
+      </div>
+      <div className={`text-xl font-black font-mono leading-none ${c.color}`}>{c.value}</div>
+      <div className="text-[10px] text-muted-foreground/60 mt-1 leading-tight">{c.sub}</div>
+    </div>
+  );
+
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-6 py-4 border-b border-border bg-[hsl(220_28%_5%)]">
-      {cards.map(c => (
-        <div
-          key={c.label}
-          onClick={() => c.tab && onTabChange(c.tab)}
-          className={`rounded-xl border p-4 transition-all ${c.urgent ? 'border-amber-500/30 bg-amber-500/5' : 'border-border bg-white/[0.02]'} ${c.tab ? 'cursor-pointer hover:border-border/80 hover:bg-white/[0.04]' : ''}`}
-        >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">{c.label}</span>
-            <span className="text-base">{c.icon}</span>
-          </div>
-          <div className={`text-2xl font-black font-mono ${c.color}`}>
-            {c.isString ? c.value : String(c.value)}
-          </div>
-          <div className="text-[11px] text-muted-foreground/60 mt-0.5">{c.sub}</div>
-        </div>
-      ))}
+    <div className="px-6 py-4 border-b border-border bg-[hsl(220_28%_5%)] space-y-3">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {row1.map(c => <Card key={c.label} c={c} />)}
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {row2.map(c => <Card key={c.label} c={c} />)}
+      </div>
     </div>
   );
 }
@@ -311,17 +292,189 @@ function TradeHistoryModal({ trader, onClose }: { trader: LiveTrader; onClose: (
   );
 }
 
+// ── CSV Export Helper ──────────────────────────────────────────────────────────
+function exportCSV(filename: string, rows: Record<string, unknown>[]) {
+  if (!rows.length) return;
+  const headers = Object.keys(rows[0]);
+  const escape = (v: unknown) => {
+    const s = String(v ?? '');
+    return (s.includes(',') || s.includes('"') || s.includes('\n')) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const csv = [headers.join(','), ...rows.map(r => headers.map(h => escape(r[h])).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+// ── Create Trader Modal ────────────────────────────────────────────────────────
+function CreateTraderModal({ onDone, onClose }: { onDone: () => void; onClose: () => void }) {
+  const [fullName, setFullName] = useState('');
+  const [email,    setEmail]    = useState('');
+  const [password, setPassword] = useState('');
+  const [balance,  setBalance]  = useState('0');
+  const [busy,     setBusy]     = useState(false);
+  const [err,      setErr]      = useState('');
+  const [done,     setDone]     = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setErr('');
+    const bal = parseFloat(balance);
+    if (!fullName.trim() || !email.trim() || !password) { setErr('Full name, email, and password are required.'); return; }
+    if (password.length < 6) { setErr('Password must be at least 6 characters.'); return; }
+    if (isNaN(bal) || bal < 0) { setErr('Enter a valid starting balance (0 or more).'); return; }
+    setBusy(true);
+    try {
+      const res  = await fetch('/api/admin/live-traders', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fullName: fullName.trim(), email: email.trim().toLowerCase(), password, balance: bal }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
+      setDone(true); onDone();
+    } catch { setErr('Network error.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-[hsl(220_28%_8%)] border border-border rounded-2xl p-6 w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+        {done ? (
+          <div className="flex flex-col items-center text-center gap-3 py-2">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+              <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            </div>
+            <p className="font-bold">Account created!</p>
+            <p className="text-sm text-muted-foreground">Trader can now log in with the credentials you set.</p>
+            <button onClick={onClose} className="mt-2 px-6 h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition-all">Done</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base font-bold">Create Live Trader Account</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Register a new trader on their behalf</p>
+              </div>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">✕</button>
+            </div>
+            {err && <div className="mb-3 text-xs text-red-400 bg-red-950/40 border border-red-800/40 rounded-lg px-3 py-2">{err}</div>}
+            <form onSubmit={submit} className="space-y-4">
+              {([
+                { label: 'Full Name',      state: fullName, set: setFullName, type: 'text',     ph: 'John Doe' },
+                { label: 'Email Address',  state: email,    set: setEmail,    type: 'email',    ph: 'john@example.com' },
+                { label: 'Password',       state: password, set: setPassword, type: 'password', ph: 'Min. 6 characters' },
+              ] as const).map(f => (
+                <div key={f.label}>
+                  <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">{f.label}</label>
+                  <input type={f.type} value={f.state} onChange={e => (f.set as (v: string) => void)(e.target.value)} placeholder={f.ph} required
+                    className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+                </div>
+              ))}
+              <div>
+                <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Starting Balance (USD)</label>
+                <input type="number" value={balance} onChange={e => setBalance(e.target.value)} min="0" step="0.01"
+                  className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm border border-border rounded-xl text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                <button type="submit" disabled={busy} className="flex-1 py-2.5 text-sm bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors">
+                  {busy ? 'Creating…' : 'Create Account'}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Reset Password Modal ───────────────────────────────────────────────────────
+function ResetPasswordModal({ trader, onDone, onClose }: { trader: LiveTrader; onDone: () => void; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm,  setConfirm]  = useState('');
+  const [busy,     setBusy]     = useState(false);
+  const [err,      setErr]      = useState('');
+  const [done,     setDone]     = useState(false);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setErr('');
+    if (password.length < 6) { setErr('Password must be at least 6 characters.'); return; }
+    if (password !== confirm)  { setErr('Passwords do not match.'); return; }
+    setBusy(true);
+    try {
+      const res  = await fetch(`/api/admin/live-traders/${trader.id}/reset-password`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
+      setDone(true); onDone();
+    } catch { setErr('Network error.'); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-[hsl(220_28%_8%)] border border-border rounded-2xl p-6 w-full max-w-sm shadow-2xl" onClick={e => e.stopPropagation()}>
+        {done ? (
+          <div className="flex flex-col items-center text-center gap-3 py-2">
+            <div className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
+              <svg className="w-6 h-6 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
+            </div>
+            <p className="font-bold">Password reset!</p>
+            <p className="text-sm text-muted-foreground">{trader.fullName} can log in with the new password.</p>
+            <button onClick={onClose} className="mt-2 px-6 h-10 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition-all">Done</button>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base font-bold">Reset Password</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{trader.fullName} · {trader.email}</p>
+              </div>
+              <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all">✕</button>
+            </div>
+            {err && <div className="mb-3 text-xs text-red-400 bg-red-950/40 border border-red-800/40 rounded-lg px-3 py-2">{err}</div>}
+            <form onSubmit={submit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">New Password</label>
+                <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 6 characters" required autoFocus
+                  className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+              </div>
+              <div>
+                <label className="block text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5">Confirm Password</label>
+                <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Re-enter password" required
+                  className="w-full bg-[hsl(var(--input))] border border-border rounded-xl px-3 py-2.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+              </div>
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={onClose} className="flex-1 py-2.5 text-sm border border-border rounded-xl text-muted-foreground hover:text-foreground transition-colors">Cancel</button>
+                <button type="submit" disabled={busy} className="flex-1 py-2.5 text-sm bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-semibold rounded-xl transition-colors">
+                  {busy ? 'Resetting…' : 'Reset Password'}
+                </button>
+              </div>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Live Traders Tab ───────────────────────────────────────────────────────────
 function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onStatsChange: () => void }) {
-  const [traders, setTraders]       = useState<LiveTrader[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [search, setSearch]         = useState('');
-  const [filter, setFilter]         = useState<'all' | 'active' | 'suspended'>('all');
-  const [busy, setBusy]             = useState<Record<number, string>>({});
-  const [editTrader, setEditTrader] = useState<LiveTrader | null>(null);
-  const [histTrader, setHistTrader] = useState<LiveTrader | null>(null);
-  const [toast, setToast]           = useState('');
+  const [traders, setTraders]               = useState<LiveTrader[]>([]);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState('');
+  const [search, setSearch]                 = useState('');
+  const [filter, setFilter]                 = useState<'all' | 'active' | 'suspended'>('all');
+  const [busy, setBusy]                     = useState<Record<number, string>>({});
+  const [editTrader, setEditTrader]         = useState<LiveTrader | null>(null);
+  const [histTrader, setHistTrader]         = useState<LiveTrader | null>(null);
+  const [resetPwdTrader, setResetPwdTrader] = useState<LiveTrader | null>(null);
+  const [showCreate, setShowCreate]         = useState(false);
+  const [toast, setToast]                   = useState('');
   const toastRef = useRef<ReturnType<typeof setTimeout>>();
 
   function showToast(msg: string) {
@@ -345,11 +498,11 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
   useEffect(() => { load(); }, [load]);
 
   async function setBalance(id: number, balance: number) {
-    await fetch(`/api/admin/live-traders/${id}/balance`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+    const res = await fetch(`/api/admin/live-traders/${id}/balance`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ balance }),
     });
+    if (!res.ok) { const d = await res.json(); throw new Error(d.error ?? 'Failed to update balance'); }
     await load(); onStatsChange(); showToast('Balance updated');
   }
 
@@ -357,11 +510,11 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
     const next = !t.suspended;
     setBusy(b => ({ ...b, [t.id]: 'suspend' }));
     try {
-      await fetch(`/api/admin/live-traders/${t.id}/suspend`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch(`/api/admin/live-traders/${t.id}/suspend`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ suspended: next }),
       });
+      if (!res.ok) { const d = await res.json(); showToast(`Error: ${d.error ?? 'Failed'}`); return; }
       await load(); onStatsChange();
       showToast(next ? `${t.fullName} suspended` : `${t.fullName} reactivated`);
     } finally { setBusy(b => { const n = { ...b }; delete n[t.id]; return n; }); }
@@ -373,6 +526,7 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
     try {
       const res  = await fetch(`/api/admin/live-traders/${t.id}/close-all`, { method: 'POST' });
       const data = await res.json();
+      if (!res.ok) { showToast(`Error: ${data.error ?? 'Failed'}`); return; }
       await load();
       showToast(data.closed > 0
         ? `Closed ${data.closed} position${data.closed !== 1 ? 's' : ''} · P&L ${pnlStr(data.pnl)}`
@@ -384,7 +538,8 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
     if (!confirm(`Permanently delete account for ${t.fullName} (${t.email})?\nAll their trades will also be removed.`)) return;
     setBusy(b => ({ ...b, [t.id]: 'delete' }));
     try {
-      await fetch(`/api/admin/live-traders/${t.id}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/live-traders/${t.id}`, { method: 'DELETE' });
+      if (!res.ok) { const d = await res.json(); showToast(`Error: ${d.error ?? 'Failed'}`); return; }
       await load(); onStatsChange();
       showToast(`${t.fullName} deleted`);
     } finally { setBusy(b => { const n = { ...b }; delete n[t.id]; return n; }); }
@@ -417,13 +572,24 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
             className="w-full pl-9 pr-4 h-9 bg-[hsl(var(--input))] border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-blue-500/50"
           />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {(['all', 'active', 'suspended'] as const).map(f => (
             <button key={f} onClick={() => setFilter(f)}
               className={`px-3.5 h-9 rounded-xl text-xs font-semibold border transition-all capitalize ${filter === f ? 'bg-blue-600 border-blue-600 text-white' : 'border-border text-muted-foreground hover:text-foreground hover:border-border/80'}`}>
               {f}
             </button>
           ))}
+          <button onClick={() => setShowCreate(true)}
+            className="px-3.5 h-9 rounded-xl text-xs font-bold border border-blue-700/50 bg-blue-600/15 text-blue-400 hover:bg-blue-600/25 transition-all flex items-center gap-1.5">
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg>
+            Add Trader
+          </button>
+          <button
+            onClick={() => exportCSV(`traders-${Date.now()}.csv`, traders.map(t => ({ Name: t.fullName, Email: t.email, Balance: t.balance, Status: t.suspended ? 'Suspended' : 'Active', OpenPositions: t.openPositions, Trades: t.totalTrades, NetPnL: t.netPnl, WinRate: t.winRate, PendingDeposits: t.pendingDeposits, Joined: t.createdAt ?? '' })))}
+            disabled={traders.length === 0}
+            className="px-3 h-9 rounded-xl text-xs border border-border text-muted-foreground hover:text-foreground transition-all disabled:opacity-30" title="Export traders as CSV">
+            ⬇ CSV
+          </button>
           <button onClick={load} title="Refresh" className="px-3 h-9 rounded-xl text-xs border border-border text-muted-foreground hover:text-foreground transition-all">↻</button>
         </div>
       </div>
@@ -479,6 +645,7 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
                     <td className="px-4 py-3.5">
                       <div className="flex items-center justify-center gap-1">
                         <IconBtn onClick={() => setEditTrader(t)} title="Edit balance">💰</IconBtn>
+                        <IconBtn onClick={() => setResetPwdTrader(t)} title="Reset password">🔑</IconBtn>
                         <IconBtn
                           onClick={() => toggleSuspend(t)}
                           disabled={busy[t.id] === 'suspend'}
@@ -524,6 +691,19 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
         />
       )}
       {histTrader && <TradeHistoryModal trader={histTrader} onClose={() => setHistTrader(null)} />}
+      {resetPwdTrader && (
+        <ResetPasswordModal
+          trader={resetPwdTrader}
+          onDone={() => showToast(`Password reset for ${resetPwdTrader.fullName}`)}
+          onClose={() => setResetPwdTrader(null)}
+        />
+      )}
+      {showCreate && (
+        <CreateTraderModal
+          onDone={() => { load(); onStatsChange(); }}
+          onClose={() => setShowCreate(false)}
+        />
+      )}
     </div>
   );
 }
@@ -1294,6 +1474,7 @@ export default function AdminDashboard({ onLogout, onBack }: { onLogout: () => v
     try {
       const res = await fetch('/api/admin/stats');
       if (res.status === 401) { onLogout(); return; }
+      if (!res.ok) return;
       setStats(await res.json());
     } catch { /* silently ignore stats load error */ }
   }, [onLogout]);

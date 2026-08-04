@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { randomUUID } from "crypto";
+import { randomUUID, scrypt, randomBytes } from "crypto";
+import { promisify } from "util";
 import { eq, count, sum, gt, desc } from "drizzle-orm";
 import {
   db, forexAccounts, forexPositions, forexClosedTrades,
@@ -10,6 +11,13 @@ import { getPriceSnapshot, calcPnl } from "../lib/forex-sim";
 import type { Request, Response, NextFunction } from "express";
 
 const router = Router();
+
+const scryptAsync = promisify(scrypt);
+async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  const buf  = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${salt}:${buf.toString("hex")}`;
+}
 
 // ── Admin auth middleware ─────────────────────────────────────────────────────
 function requireAdmin(req: Request, res: Response, next: NextFunction) {
@@ -104,7 +112,8 @@ router.get("/admin/accounts", requireAdmin, async (req, res) => {
         const [tradeRow] = await db.select({ c: count(), pnl: sum(forexClosedTrades.pnl) })
           .from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid));
         const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades)
-          .where(eq(forexClosedTrades.sessionId, sid));
+          .where(eq(forexClosedTrades.sessionId, sid))
+          .where(gt(forexClosedTrades.pnl, 0));
 
         const totalTrades = Number(tradeRow?.c ?? 0);
         const netPnl      = parseFloat(Number(tradeRow?.pnl ?? 0).toFixed(2));
@@ -331,6 +340,58 @@ router.delete("/admin/live-traders/:id", requireAdmin, async (req, res) => {
   }
 });
 
+// ── POST /api/admin/live-traders ─────────────────────────────────────────────
+router.post("/admin/live-traders", requireAdmin, async (req, res) => {
+  try {
+    const { email, fullName, password, balance } = req.body as {
+      email?: string; fullName?: string; password?: string; balance?: number;
+    };
+    if (!email?.trim() || !fullName?.trim() || !password) {
+      return void res.status(400).json({ error: "Email, full name, and password are required." });
+    }
+    if (password.length < 6) {
+      return void res.status(400).json({ error: "Password must be at least 6 characters." });
+    }
+    const emailLower = email.trim().toLowerCase();
+    const [existing] = await db.select().from(liveTraders).where(eq(liveTraders.email, emailLower));
+    if (existing) {
+      return void res.status(409).json({ error: "An account with this email already exists." });
+    }
+    const passwordHash = await hashPassword(password);
+    const startBalance = typeof balance === "number" && balance >= 0 ? balance : 0;
+    const [trader] = await db.insert(liveTraders).values({
+      email: emailLower, passwordHash, fullName: fullName.trim(), balance: startBalance,
+    }).returning();
+    res.status(201).json({
+      id: trader.id, email: trader.email, fullName: trader.fullName,
+      balance: trader.balance, suspended: trader.suspended,
+      createdAt: trader.createdAt?.toISOString() ?? null,
+    });
+  } catch (err) {
+    req.log.error({ err }, "admin/create-trader error");
+    res.status(500).json({ error: "Failed to create trader" });
+  }
+});
+
+// ── POST /api/admin/live-traders/:id/reset-password ───────────────────────────
+router.post("/admin/live-traders/:id/reset-password", requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { password } = req.body as { password?: string };
+    if (!password || password.length < 6) {
+      return void res.status(400).json({ error: "Password must be at least 6 characters." });
+    }
+    const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, id));
+    if (!trader) return void res.status(404).json({ error: "Trader not found" });
+    const passwordHash = await hashPassword(password);
+    await db.update(liveTraders).set({ passwordHash }).where(eq(liveTraders.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "admin/reset-password error");
+    res.status(500).json({ error: "Failed to reset password" });
+  }
+});
+
 // ── POST /api/admin/deposits/:id/reverse ─────────────────────────────────────
 router.post("/admin/deposits/:id/reverse", requireAdmin, async (req, res) => {
   try {
@@ -474,15 +535,18 @@ router.post("/admin/live-traders/:id/manual-deposit", requireAdmin, async (req, 
 // ── GET /api/admin/company-wallet ─────────────────────────────────────────────
 router.get("/admin/company-wallet", requireAdmin, async (req, res) => {
   try {
+    // Calculate true balance across ALL transactions (no limit)
+    const allTxns = await db
+      .select({ type: companyWalletTransactions.type, amount: companyWalletTransactions.amount })
+      .from(companyWalletTransactions);
+    const balance = allTxns.reduce((acc, t) => t.type === "credit" ? acc + t.amount : acc - t.amount, 0);
+
+    // Fetch recent 500 for display
     const txns = await db
       .select()
       .from(companyWalletTransactions)
       .orderBy(desc(companyWalletTransactions.createdAt))
-      .limit(200);
-
-    const balance = txns.reduce((acc, t) => {
-      return t.type === "credit" ? acc + t.amount : acc - t.amount;
-    }, 0);
+      .limit(500);
 
     res.json({ balance: parseFloat(balance.toFixed(2)), transactions: txns });
   } catch (err) {
