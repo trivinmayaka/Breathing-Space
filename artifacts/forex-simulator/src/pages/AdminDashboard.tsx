@@ -475,7 +475,7 @@ function LiveTradersTab({ onLogout, onStatsChange }: { onLogout: () => void; onS
   const [resetPwdTrader, setResetPwdTrader] = useState<LiveTrader | null>(null);
   const [showCreate, setShowCreate]         = useState(false);
   const [toast, setToast]                   = useState('');
-  const toastRef = useRef<ReturnType<typeof setTimeout>>();
+  const toastRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   function showToast(msg: string) {
     setToast(msg);
@@ -1494,7 +1494,7 @@ export default function AdminDashboard({ onLogout, onBack }: { onLogout: () => v
       <div className="flex items-center justify-between px-6 py-3.5 border-b border-border bg-[hsl(220_28%_5%)] shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-2 h-2 rounded-full bg-blue-400 shadow-[0_0_6px_rgba(96,165,250,0.8)]" />
-          <span className="text-sm font-bold tracking-wide">TrivinFX Pro</span>
+          <span className="text-sm font-bold tracking-wide">TmFXPro</span>
           <span className="text-muted-foreground/40 text-xs">·</span>
           <span className="text-xs text-muted-foreground">Admin Dashboard</span>
           {pendingTotal > 0 && (

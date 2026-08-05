@@ -125,36 +125,82 @@ router.get("/live/me", async (req, res) => {
   return void res.json({ loggedIn: true, traderId: trader.id, email: trader.email, fullName: trader.fullName });
 });
 
+// ── Helper: close a position at a given price, updating balance ───────────────
+async function closePositionAtPrice(
+  traderId: number,
+  currentBalance: number,
+  sid: string,
+  pos: { id: number; pair: string; action: string; lots: number; openPrice: number; openedAt: Date | null },
+  closePrice: number
+): Promise<number> {
+  const pnl = calcPnl(pos.pair, pos.action, pos.lots, pos.openPrice, closePrice);
+  const newBalance = parseFloat((currentBalance + pnl).toFixed(2));
+  await db.delete(forexPositions).where(eq(forexPositions.id, pos.id));
+  await db.insert(forexClosedTrades).values({
+    sessionId: sid, pair: pos.pair, action: pos.action, lots: pos.lots,
+    openPrice: pos.openPrice, closePrice, pnl,
+    openedAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
+  });
+  await db.update(liveTraders).set({ balance: newBalance }).where(eq(liveTraders.id, traderId));
+  return newBalance;
+}
+
 // ── GET /api/live/account ─────────────────────────────────────────────────────
 router.get("/live/account", requireLive, async (req, res) => {
   try {
-    const trader = (req as any).liveTrader as { id: number; balance: number };
+    let trader = (req as any).liveTrader as { id: number; balance: number };
     const sid = liveSessionId(trader.id);
     const snap = getPriceSnapshot();
 
     const dbPositions = await db.select().from(forexPositions).where(eq(forexPositions.sessionId, sid));
 
+    let runningBalance = trader.balance;
     let floatingPnl = 0;
-    const positions = await Promise.all(
-      dbPositions.map(async (pos) => {
-        const pd = snap[pos.pair];
-        const cur = pd ? (pos.action === "BUY" ? pd.bid : pd.ask) : pos.currentPrice;
-        const pnl = calcPnl(pos.pair, pos.action, pos.lots, pos.openPrice, cur);
-        floatingPnl += pnl;
-        await db.update(forexPositions).set({ currentPrice: cur, pnl }).where(eq(forexPositions.id, pos.id));
-        return {
-          id: pos.id, pair: pos.pair, action: pos.action, lots: pos.lots,
-          openPrice: pos.openPrice, currentPrice: cur, pnl,
-          sl: pos.sl ?? null, tp: pos.tp ?? null,
-          openedAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
-          dec: pd?.dec ?? 5,
-        };
-      })
-    );
+    const openPositions: Array<{
+      id: number; pair: string; action: string; lots: number;
+      openPrice: number; currentPrice: number; pnl: number;
+      sl: number | null; tp: number | null;
+      openedAt: string; dec: number;
+    }> = [];
 
-    const equity     = parseFloat((trader.balance + floatingPnl).toFixed(2));
-    const marginUsed = positions.reduce((s, p) => s + p.lots * 1000, 0);
-    const freeMargin = parseFloat((equity - marginUsed).toFixed(2));
+    for (const pos of dbPositions) {
+      const pd  = snap[pos.pair];
+      const cur = pd ? (pos.action === "BUY" ? pd.bid : pd.ask) : pos.currentPrice;
+      const pnl = calcPnl(pos.pair, pos.action, pos.lots, pos.openPrice, cur);
+
+      // ── SL trigger ──
+      const slHit = pos.sl != null && (
+        (pos.action === "BUY"  && cur <= pos.sl) ||
+        (pos.action === "SELL" && cur >= pos.sl)
+      );
+      // ── TP trigger ──
+      const tpHit = pos.tp != null && (
+        (pos.action === "BUY"  && cur >= pos.tp) ||
+        (pos.action === "SELL" && cur <= pos.tp)
+      );
+
+      if (slHit || tpHit) {
+        // Close at current market price (SL/TP fill)
+        runningBalance = await closePositionAtPrice(trader.id, runningBalance, sid, pos, cur);
+        req.log.info({ posId: pos.id, pair: pos.pair, reason: slHit ? "SL" : "TP", closePrice: cur }, "SL/TP triggered");
+        continue; // position is closed; exclude from open list
+      }
+
+      // Position stays open — update live price/pnl in DB
+      await db.update(forexPositions).set({ currentPrice: cur, pnl }).where(eq(forexPositions.id, pos.id));
+      floatingPnl += pnl;
+      openPositions.push({
+        id: pos.id, pair: pos.pair, action: pos.action, lots: pos.lots,
+        openPrice: pos.openPrice, currentPrice: cur, pnl,
+        sl: pos.sl ?? null, tp: pos.tp ?? null,
+        openedAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
+        dec: pd?.dec ?? 5,
+      });
+    }
+
+    const equity      = parseFloat((runningBalance + floatingPnl).toFixed(2));
+    const marginUsed  = openPositions.reduce((s, p) => s + p.lots * 1000, 0);
+    const freeMargin  = parseFloat((equity - marginUsed).toFixed(2));
     const marginLevel = marginUsed > 0 ? parseFloat((equity / marginUsed * 100).toFixed(1)) : 0;
 
     const [totalRow] = await db.select({ c: count() }).from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid));
@@ -165,12 +211,12 @@ router.get("/live/account", requireLive, async (req, res) => {
     const wins  = Number(winRow?.c ?? 0);
 
     return void res.json({
-      balance: trader.balance, equity, floatingPnl: parseFloat(floatingPnl.toFixed(2)),
+      balance: runningBalance, equity, floatingPnl: parseFloat(floatingPnl.toFixed(2)),
       marginUsed, freeMargin, marginLevel,
       totalTrades: total,
       winRate: total > 0 ? parseFloat((wins / total * 100).toFixed(1)) : 0,
       realizedPnl: parseFloat(Number(pnlRow?.total ?? 0).toFixed(2)),
-      positions,
+      positions: openPositions,
     });
   } catch (err) {
     req.log.error({ err }, "live/account error");
@@ -197,6 +243,20 @@ router.post("/live/orders", requireLive, async (req, res) => {
     const snap  = getPriceSnapshot();
     const pd    = snap[pair];
     const price = action === "BUY" ? pd.ask : pd.bid;
+
+    // ── SL/TP validation ──────────────────────────────────────────────────────
+    if (sl != null) {
+      if (!isFinite(sl) || sl <= 0) return void res.status(400).json({ error: "Stop Loss must be a positive finite number." });
+      // For a BUY, SL must be below the entry price; for SELL, above.
+      if (action === "BUY"  && sl >= price) return void res.status(400).json({ error: `Stop Loss (${sl}) must be below the entry price (${price.toFixed(pd.dec)}) for a BUY order.` });
+      if (action === "SELL" && sl <= price) return void res.status(400).json({ error: `Stop Loss (${sl}) must be above the entry price (${price.toFixed(pd.dec)}) for a SELL order.` });
+    }
+    if (tp != null) {
+      if (!isFinite(tp) || tp <= 0) return void res.status(400).json({ error: "Take Profit must be a positive finite number." });
+      // For a BUY, TP must be above the entry price; for SELL, below.
+      if (action === "BUY"  && tp <= price) return void res.status(400).json({ error: `Take Profit (${tp}) must be above the entry price (${price.toFixed(pd.dec)}) for a BUY order.` });
+      if (action === "SELL" && tp >= price) return void res.status(400).json({ error: `Take Profit (${tp}) must be below the entry price (${price.toFixed(pd.dec)}) for a SELL order.` });
+    }
 
     await db.insert(forexPositions).values({
       sessionId: sid, pair, action, lots, openPrice: price, currentPrice: price, pnl: 0,

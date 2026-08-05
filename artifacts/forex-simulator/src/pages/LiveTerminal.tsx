@@ -20,9 +20,6 @@ interface PriceData {
   changePct: number; direction: string; dec: number; pip: number; group: string;
 }
 interface PriceSnapshot { [pair: string]: PriceData }
-interface DepositForm {
-  amount: string; paymentMethod: string; paymentReference: string; contact: string;
-}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const fmt  = (n: number, d = 2) => `$${Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d })}`;
@@ -49,7 +46,7 @@ const DEPOSIT_METHODS = [
     color: 'emerald',
     instructions: [
       { label: 'Paybill Number', value: '247247' },
-      { label: 'Account Number', value: 'TrivinFX' },
+      { label: 'Account Number', value: 'TmFX' },
     ],
     hint: 'Go to M-Pesa → Lipa na M-Pesa → Paybill, enter the details above, then paste your confirmation code below.',
     refPlaceholder: 'e.g. QGH3K2X1W4',
@@ -65,7 +62,7 @@ const DEPOSIT_METHODS = [
     color: 'red',
     instructions: [
       { label: 'Send to Number', value: '+254 733 000 000' },
-      { label: 'Account Name', value: 'TrivinFX Ltd' },
+      { label: 'Account Name', value: 'TmFX Ltd' },
     ],
     hint: 'Open Airtel Money → Send Money, enter the number above, then share the transaction ID.',
     refPlaceholder: 'e.g. AT2024XXXXXXXX',
@@ -82,7 +79,7 @@ const DEPOSIT_METHODS = [
     instructions: [
       { label: 'Bank', value: 'Equity Bank' },
       { label: 'Account No.', value: '0123456789' },
-      { label: 'Account Name', value: 'TrivinFX Financial Ltd' },
+      { label: 'Account Name', value: 'TmFX Financial Ltd' },
     ],
     hint: 'Transfer via internet banking or at a branch. Use your name as the reference so we can match your payment.',
     refPlaceholder: 'Bank reference or slip number',
@@ -125,12 +122,12 @@ const DEPOSIT_METHODS = [
     label: 'Cash',
     icon: (
       <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75" />
       </svg>
     ),
     color: 'violet',
     instructions: [
-      { label: 'Office', value: 'TrivinFX HQ, Nairobi CBD' },
+      { label: 'Office', value: 'TmFX HQ, Nairobi CBD' },
       { label: 'Hours', value: 'Mon–Fri, 9 AM – 5 PM' },
       { label: 'Contact', value: '+254 700 000 000' },
     ],
@@ -172,11 +169,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
 
   const method = DEPOSIT_METHODS.find(m => m.id === methodId);
 
-  function pick(id: MethodId) {
-    setMethodId(id);
-    setErr('');
-    setStep('form');
-  }
+  function pick(id: MethodId) { setMethodId(id); setErr(''); setStep('form'); }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -186,12 +179,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
       const res = await fetch(`${API}/live/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount,
-          paymentMethod: method.label,
-          paymentReference: ref,
-          contact,
-        }),
+        body: JSON.stringify({ amount, paymentMethod: method.label, paymentReference: ref, contact }),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
@@ -204,8 +192,6 @@ function DepositModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4" onClick={onClose}>
       <div className="w-full max-w-lg bg-[hsl(220_28%_7%)] border border-border rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
           <div className="flex items-center gap-3">
             {step === 'form' && (
@@ -227,7 +213,6 @@ function DepositModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Step: Pick method */}
         {step === 'pick' && (
           <div className="p-5 grid grid-cols-3 gap-3">
             {DEPOSIT_METHODS.map(m => {
@@ -243,10 +228,8 @@ function DepositModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {/* Step: Form */}
         {step === 'form' && method && (
           <form onSubmit={submit} className="p-5 space-y-4">
-            {/* Payment instructions box */}
             <div className={`rounded-xl border p-4 space-y-2 ${colorMap[method.color]}`}>
               <p className="text-[11px] font-bold uppercase tracking-widest opacity-70">Send payment to</p>
               <div className="space-y-1.5">
@@ -259,8 +242,6 @@ function DepositModal({ onClose }: { onClose: () => void }) {
               </div>
               <p className="text-[11px] text-foreground/60 leading-relaxed pt-1 border-t border-current/20">{method.hint}</p>
             </div>
-
-            {/* Amount */}
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Amount (USD)</label>
               <input required type="number" min="1" max="1000000" step="0.01"
@@ -268,8 +249,6 @@ function DepositModal({ onClose }: { onClose: () => void }) {
                 placeholder="e.g. 500"
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
-
-            {/* Reference */}
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Transaction Reference / ID</label>
               <input required type="text"
@@ -277,8 +256,6 @@ function DepositModal({ onClose }: { onClose: () => void }) {
                 placeholder={method.refPlaceholder}
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
-
-            {/* Contact */}
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Your Phone or Email</label>
               <input required type="text"
@@ -286,20 +263,16 @@ function DepositModal({ onClose }: { onClose: () => void }) {
                 placeholder="For deposit confirmation"
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
-
             {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
-
             <button type="submit" disabled={loading}
               className={`w-full h-11 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 ${btnMap[method.color] ?? btnMap.emerald}`}>
               {loading
                 ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Submitting…</>
-                : <>Submit Deposit Request</>
-              }
+                : <>Submit Deposit Request</>}
             </button>
           </form>
         )}
 
-        {/* Step: Done */}
         {step === 'done' && (
           <div className="p-8 flex flex-col items-center text-center gap-3">
             <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
@@ -309,11 +282,8 @@ function DepositModal({ onClose }: { onClose: () => void }) {
             <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3 w-full">
               <p className="text-sm text-emerald-300 font-semibold">{credited}</p>
             </div>
-            <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
-              Your balance has been updated. You can start trading immediately.
-            </p>
-            <button onClick={onClose}
-              className="mt-2 px-8 h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all w-full">
+            <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">Your balance has been updated. You can start trading immediately.</p>
+            <button onClick={onClose} className="mt-2 px-8 h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all w-full">
               Start Trading
             </button>
           </div>
@@ -325,6 +295,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
 
 // ─── Withdrawal Modal ─────────────────────────────────────────────────────────
 function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => void }) {
+  const WITHDRAW_METHODS = ['M-Pesa', 'Airtel Money', 'Bank Transfer', 'Crypto (USDT)', 'Western Union'];
   const [form, setForm] = useState({ amount: '', paymentMethod: '', accountDetails: '' });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
@@ -363,7 +334,7 @@ function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => v
           </div>
           <div>
             <h2 className="text-base font-bold text-foreground">Request Withdrawal</h2>
-            <p className="text-xs text-muted-foreground">Available balance: <span className="font-mono text-foreground">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></p>
+            <p className="text-xs text-muted-foreground">Available: <span className="font-mono text-foreground">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</span></p>
           </div>
         </div>
 
@@ -382,9 +353,11 @@ function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => v
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Payment Method</label>
-              <input type="text" value={form.paymentMethod} onChange={e => set('paymentMethod')(e.target.value)}
-                placeholder="e.g. M-Pesa, Bank Transfer, Crypto"
-                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/60 transition-all" />
+              <select value={form.paymentMethod} onChange={e => set('paymentMethod')(e.target.value)} required
+                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-amber-500/50 transition-all appearance-none">
+                <option value="">Select method…</option>
+                {WITHDRAW_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
             <div>
               <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Account Details</label>
@@ -393,7 +366,7 @@ function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => v
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/60 transition-all" />
             </div>
             {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
-            <button type="submit" disabled={loading || balance <= 0}
+            <button type="submit" disabled={loading || balance <= 0 || !form.amount || !form.paymentMethod || !form.accountDetails}
               className="w-full h-11 bg-amber-700 hover:bg-amber-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2">
               {loading ? 'Submitting…' : 'Submit Withdrawal Request'}
             </button>
@@ -404,85 +377,170 @@ function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => v
   );
 }
 
-// ─── Order Modal ──────────────────────────────────────────────────────────────
-function OrderModal({
-  pair, prices, balance, onClose, onPlaced,
+// ─── Trade Panel (inline, no modal) ──────────────────────────────────────────
+function TradePanel({
+  pair, prices, balance, onPlaced,
 }: {
-  pair: string; prices: PriceSnapshot; balance: number;
-  onClose: () => void; onPlaced: () => void;
+  pair: string; prices: PriceSnapshot; balance: number; onPlaced: () => void;
 }) {
   const [action, setAction] = useState<'BUY' | 'SELL'>('BUY');
-  const [lots, setLots] = useState('0.10');
+  const [lots, setLots]     = useState('0.10');
+  const [sl, setSl]         = useState('');
+  const [tp, setTp]         = useState('');
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
-  const pd = prices[pair];
+  const [err, setErr]       = useState('');
+  const [flash, setFlash]   = useState('');
+
+  const pd    = prices[pair];
+  const price = pd ? (action === 'BUY' ? pd.ask : pd.bid) : 0;
+  const dec   = pd?.dec ?? 5;
+
+  // preset lot sizes
+  const PRESETS = ['0.01','0.05','0.10','0.50','1.00'];
 
   async function place() {
     setErr(''); setLoading(true);
     try {
+      const body: Record<string, unknown> = { pair, action, lots: parseFloat(lots) };
+      if (sl) body.sl = parseFloat(sl);
+      if (tp) body.tp = parseFloat(tp);
       const res = await fetch(`${API}/live/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pair, action, lots: parseFloat(lots) }),
+        body: JSON.stringify(body),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
+      setFlash(`${action} ${lots}L @ ${fmtPrice(price, dec)}`);
+      setSl(''); setTp('');
+      setTimeout(() => setFlash(''), 2500);
       onPlaced();
     } catch { setErr('Network error.'); }
     finally { setLoading(false); }
   }
 
-  const price = pd ? (action === 'BUY' ? pd.ask : pd.bid) : 0;
-  const dec = pd?.dec ?? 5;
+  const lotsNum = parseFloat(lots) || 0;
+  const pipVal  = pd ? (lotsNum * pd.pip * 10000) : 0; // approx pip value in USD
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="w-full max-w-sm bg-[hsl(220_28%_7%)] border border-border rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="font-bold text-base text-foreground">Place Order — {pair}</h2>
-          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-white/5">
-            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-          </button>
+    <div className="flex flex-col gap-3 p-3">
+      {/* Flash message */}
+      {flash && (
+        <div className="bg-emerald-500/15 border border-emerald-500/30 rounded-lg px-3 py-2 text-xs text-emerald-300 font-semibold text-center animate-pulse">
+          ✓ Order placed: {flash}
         </div>
+      )}
 
-        {balance <= 0 && (
-          <div className="mb-4 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2.5 text-xs text-amber-300">
-            ⚠ Your balance is $0. Please request a deposit before trading.
+      {/* No balance warning */}
+      {balance <= 0 && (
+        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2 text-[11px] text-amber-300 text-center">
+          ⚠ No balance — deposit to start trading
+        </div>
+      )}
+
+      {/* BUY / SELL toggle */}
+      <div className="grid grid-cols-2 gap-1.5">
+        {(['BUY', 'SELL'] as const).map(a => (
+          <button key={a} onClick={() => { setAction(a); setErr(''); }}
+            className={`py-2.5 rounded-lg text-sm font-bold transition-all ${
+              action === a
+                ? a === 'BUY' ? 'bg-emerald-700 text-white shadow-lg shadow-emerald-900/50' : 'bg-red-700 text-white shadow-lg shadow-red-900/50'
+                : 'bg-[hsl(220_25%_10%)] text-muted-foreground hover:text-foreground border border-border'
+            }`}
+          >{a}</button>
+        ))}
+      </div>
+
+      {/* Live bid/ask */}
+      {pd && (
+        <div className="grid grid-cols-2 gap-1.5 text-center">
+          <div className={`rounded-lg px-2 py-1.5 ${action === 'SELL' ? 'bg-red-500/15 border border-red-500/30' : 'bg-[hsl(220_25%_10%)] border border-border/50'}`}>
+            <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Bid</div>
+            <div className={`font-mono text-sm font-bold ${action === 'SELL' ? 'text-red-400' : 'text-foreground/60'}`}>{fmtPrice(pd.bid, dec)}</div>
           </div>
-        )}
+          <div className={`rounded-lg px-2 py-1.5 ${action === 'BUY' ? 'bg-emerald-500/15 border border-emerald-500/30' : 'bg-[hsl(220_25%_10%)] border border-border/50'}`}>
+            <div className="text-[9px] text-muted-foreground uppercase tracking-wider mb-0.5">Ask</div>
+            <div className={`font-mono text-sm font-bold ${action === 'BUY' ? 'text-emerald-400' : 'text-foreground/60'}`}>{fmtPrice(pd.ask, dec)}</div>
+          </div>
+        </div>
+      )}
 
-        <div className="flex gap-2 mb-5">
-          {(['BUY', 'SELL'] as const).map(a => (
-            <button key={a} onClick={() => setAction(a)}
-              className={`flex-1 py-2.5 rounded-lg text-sm font-bold transition-all ${
-                action === a
-                  ? a === 'BUY' ? 'bg-emerald-700 text-white' : 'bg-red-700 text-white'
-                  : 'bg-[hsl(220_25%_10%)] text-muted-foreground hover:text-foreground'
-              }`}
-            >{a}</button>
+      {/* Spread */}
+      {pd && (
+        <div className="text-center text-[10px] text-muted-foreground">
+          Spread: <span className="font-mono text-foreground">{pd.spreadPips.toFixed(1)} pips</span>
+        </div>
+      )}
+
+      {/* Lot size */}
+      <div>
+        <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Volume (Lots)</label>
+        <div className="flex gap-1 mb-1.5 flex-wrap">
+          {PRESETS.map(p => (
+            <button key={p} onClick={() => setLots(p)}
+              className={`text-[10px] px-2 py-1 rounded font-mono transition-colors ${
+                lots === p ? 'bg-blue-600 text-white' : 'bg-[hsl(220_25%_12%)] text-muted-foreground hover:text-foreground border border-border'
+              }`}>{p}</button>
           ))}
         </div>
+        <input type="number" value={lots} onChange={e => setLots(e.target.value)} min="0.01" max="100" step="0.01"
+          className="w-full h-9 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all" />
+        {pd && lotsNum > 0 && (
+          <p className="text-[10px] text-muted-foreground mt-1">≈ ${pipVal.toFixed(2)} / pip</p>
+        )}
+      </div>
 
-        <div className="mb-4">
-          <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Lots</label>
-          <input type="number" value={lots} onChange={e => setLots(e.target.value)} min="0.01" max="100" step="0.01"
-            className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50 transition-all" />
+      {/* SL / TP */}
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+            Stop Loss
+          </label>
+          <input type="number" value={sl} onChange={e => setSl(e.target.value)} step="0.00001" placeholder="optional"
+            className="w-full h-9 bg-[hsl(220_25%_10%)] border border-red-900/30 rounded-lg px-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-red-500/40 transition-all" />
         </div>
-
-        <div className="bg-[hsl(220_25%_10%)] rounded-lg px-4 py-3 mb-4 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{action === 'BUY' ? 'Ask' : 'Bid'}</span>
-          <span className="font-mono font-bold text-foreground">{pd ? fmtPrice(price, dec) : '—'}</span>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+            Take Profit
+          </label>
+          <input type="number" value={tp} onChange={e => setTp(e.target.value)} step="0.00001" placeholder="optional"
+            className="w-full h-9 bg-[hsl(220_25%_10%)] border border-emerald-900/30 rounded-lg px-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-emerald-500/40 transition-all" />
         </div>
+      </div>
 
-        {err && <div className="mb-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
+      {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
 
-        <button onClick={place} disabled={loading || balance <= 0}
-          className={`w-full h-11 rounded-xl text-white font-bold text-sm transition-all disabled:opacity-50 ${
-            action === 'BUY' ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-red-700 hover:bg-red-600'
-          }`}
-        >
-          {loading ? 'Placing…' : `${action} ${lots} lots @ ${pd ? fmtPrice(price, dec) : '…'}`}
-        </button>
+      {/* Execute button */}
+      <button onClick={place} disabled={loading || balance <= 0 || !pd}
+        className={`w-full h-11 rounded-xl text-white font-bold text-sm transition-all disabled:opacity-50 flex items-center justify-center gap-2 ${
+          action === 'BUY' ? 'bg-emerald-700 hover:bg-emerald-600 shadow-lg shadow-emerald-900/30' : 'bg-red-700 hover:bg-red-600 shadow-lg shadow-red-900/30'
+        }`}
+      >
+        {loading
+          ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Placing…</>
+          : <>{action} {pair} · {lots}L{pd ? ` @ ${fmtPrice(price, dec)}` : ''}</>
+        }
+      </button>
+    </div>
+  );
+}
+
+// ─── Margin Level Bar ─────────────────────────────────────────────────────────
+function MarginBar({ level, marginUsed }: { level: number; marginUsed: number }) {
+  if (marginUsed === 0) return null;
+  const pct   = Math.min(level, 1000);
+  const color = level > 200 ? 'bg-emerald-500' : level > 100 ? 'bg-amber-500' : 'bg-red-500';
+  const label = level > 200 ? 'Safe' : level > 100 ? 'Warning' : 'Danger';
+  return (
+    <div className="px-3 py-2 border-t border-border">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[9px] text-muted-foreground uppercase tracking-wider">Margin Level</span>
+        <span className={`text-[10px] font-bold font-mono ${level > 200 ? 'text-emerald-400' : level > 100 ? 'text-amber-400' : 'text-red-400'}`}>
+          {level.toFixed(1)}% · {label}
+        </span>
+      </div>
+      <div className="h-1 bg-white/5 rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${color}`} style={{ width: `${(pct / 1000) * 100}%` }} />
       </div>
     </div>
   );
@@ -494,16 +552,15 @@ interface LiveTerminalProps {
 }
 
 export function LiveTerminal({ onLogout }: LiveTerminalProps) {
-  const [account,  setAccount]  = useState<LiveAccount | null>(null);
-  const [prices,   setPrices]   = useState<PriceSnapshot>({});
-  const [selPair,  setSelPair]  = useState('EUR/USD');
-  const [showDep,  setShowDep]  = useState(false);
-  const [showWith, setShowWith] = useState(false);
-  const [orderPair, setOrderPair] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'positions' | 'history'>('positions');
-  const [history,  setHistory]  = useState<any[]>([]);
-  const [closing,  setClosing]  = useState<Record<number, boolean>>({});
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [account,   setAccount]   = useState<LiveAccount | null>(null);
+  const [prices,    setPrices]    = useState<PriceSnapshot>({});
+  const [selPair,   setSelPair]   = useState('EUR/USD');
+  const [showDep,   setShowDep]   = useState(false);
+  const [showWith,  setShowWith]  = useState(false);
+  const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'history'>('trade');
+  const [history,   setHistory]   = useState<any[]>([]);
+  const [closing,   setClosing]   = useState<Record<number, boolean>>({});
+  const [search,    setSearch]    = useState('');
 
   const loadAccount = useCallback(async () => {
     try {
@@ -552,15 +609,18 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
   const eq  = account?.equity ?? 0;
   const fp  = account?.floatingPnl ?? 0;
 
+  const filteredPairs = PAIRS.filter(p => p.toLowerCase().includes(search.toLowerCase()));
+
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-background overflow-hidden selection:bg-primary/30">
+
       {/* ── Header ── */}
       <div className="flex items-center justify-between px-4 h-11 border-b border-border bg-[hsl(220_28%_6%)] shrink-0 gap-3">
         {/* Left */}
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-6 h-6 rounded-md brand-gradient flex items-center justify-center text-[10px] font-black text-white shrink-0">T</div>
           <span className="hidden sm:block text-sm font-bold text-foreground tracking-tight">
-            TrivinFX<span className="brand-gradient-text">Pro</span>
+            TmFX<span className="brand-gradient-text">Pro</span>
           </span>
           <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
             <span className="live-dot" style={{ width: 5, height: 5 }} />
@@ -569,7 +629,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
         </div>
 
         {/* Centre: metrics */}
-        <div className="hidden md:flex items-center gap-5 text-xs">
+        <div className="hidden md:flex items-center gap-4 text-xs">
           <div className="text-center">
             <div className="text-[9px] text-muted-foreground uppercase tracking-widest">Balance</div>
             <div className="font-mono font-bold text-foreground">{fmt(bal)}</div>
@@ -584,22 +644,34 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
             <div className="text-[9px] text-muted-foreground uppercase tracking-widest">Float P&amp;L</div>
             <div className={`font-mono font-bold ${pnlCls(fp)}`}>{fp >= 0 ? '+' : ''}{fmt(fp)}</div>
           </div>
+          <div className="w-px h-6 bg-border" />
+          <div className="text-center">
+            <div className="text-[9px] text-muted-foreground uppercase tracking-widest">Free Margin</div>
+            <div className="font-mono font-bold text-foreground">{fmt(account?.freeMargin ?? 0)}</div>
+          </div>
+          {account && account.marginUsed > 0 && (
+            <>
+              <div className="w-px h-6 bg-border" />
+              <div className="text-center">
+                <div className="text-[9px] text-muted-foreground uppercase tracking-widest">Margin Lv.</div>
+                <div className={`font-mono font-bold ${account.marginLevel > 200 ? 'text-emerald-400' : account.marginLevel > 100 ? 'text-amber-400' : 'text-red-400'}`}>
+                  {account.marginLevel.toFixed(0)}%
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right */}
         <div className="flex items-center gap-2 shrink-0">
           <button onClick={() => setShowDep(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700/30 hover:bg-emerald-700/50 border border-emerald-700/50 text-emerald-400 text-xs font-bold transition-all">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/>
-            </svg>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4"/></svg>
             <span className="hidden sm:block">Deposit</span>
           </button>
           <button onClick={() => setShowWith(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-700/30 hover:bg-amber-700/50 border border-amber-700/50 text-amber-400 text-xs font-bold transition-all">
-            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 20v-16m-8 8h16"/>
-            </svg>
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 20v-16m-8 8h16"/></svg>
             <span className="hidden sm:block">Withdraw</span>
           </button>
           <button onClick={onLogout} className="text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1.5 rounded-lg hover:bg-white/5">
@@ -610,39 +682,43 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
 
       {/* ── Body ── */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
+
         {/* ── Watchlist ── */}
-        <div className="w-[160px] shrink-0 flex flex-col border-r border-border bg-[hsl(220_28%_6%)] overflow-y-auto">
-          <div className="px-3 py-2 border-b border-border">
-            <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">Watchlist</p>
+        <div className="w-[155px] shrink-0 flex flex-col border-r border-border bg-[hsl(220_28%_6%)] overflow-hidden">
+          <div className="px-2 py-2 border-b border-border shrink-0">
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
+              className="w-full h-7 bg-[hsl(220_25%_10%)] border border-border rounded px-2 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40" />
           </div>
-          {PAIRS.map(pair => {
-            const pd = prices[pair];
-            const isSel = pair === selPair;
-            return (
-              <button key={pair} onClick={() => setSelPair(pair)}
-                className={`w-full text-left px-3 py-2 border-b border-border/40 transition-colors ${isSel ? 'bg-blue-500/10' : 'hover:bg-white/[0.03]'}`}
-              >
-                <div className={`text-[11px] font-bold ${isSel ? 'text-blue-400' : 'text-foreground/80'}`}>{pair}</div>
-                {pd ? (
-                  <div className="flex items-center justify-between mt-0.5">
-                    <span className="font-mono text-[10px] text-foreground/70">{fmtPrice(pd.mid, pd.dec)}</span>
-                    <span className={`text-[9px] font-semibold ${pd.changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                      {pd.changePct >= 0 ? '+' : ''}{pd.changePct.toFixed(2)}%
-                    </span>
-                  </div>
-                ) : (
-                  <div className="text-[9px] text-muted-foreground/40 mt-0.5">Loading…</div>
-                )}
-              </button>
-            );
-          })}
+          <div className="overflow-y-auto flex-1">
+            {filteredPairs.map(pair => {
+              const pd = prices[pair];
+              const isSel = pair === selPair;
+              return (
+                <button key={pair} onClick={() => setSelPair(pair)}
+                  className={`w-full text-left px-3 py-2 border-b border-border/40 transition-colors ${isSel ? 'bg-blue-500/10 border-l-2 border-l-blue-500' : 'hover:bg-white/[0.03]'}`}
+                >
+                  <div className={`text-[11px] font-bold ${isSel ? 'text-blue-400' : 'text-foreground/80'}`}>{pair}</div>
+                  {pd ? (
+                    <div className="flex items-center justify-between mt-0.5">
+                      <span className="font-mono text-[10px] text-foreground/70">{fmtPrice(pd.mid, pd.dec)}</span>
+                      <span className={`text-[9px] font-semibold ${pd.changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {pd.changePct >= 0 ? '+' : ''}{pd.changePct.toFixed(2)}%
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="text-[9px] text-muted-foreground/40 mt-0.5">Loading…</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        {/* ── Chart + Trade ── */}
+        {/* ── Chart ── */}
         <div className="flex flex-col flex-1 min-w-0 min-h-0">
           {/* Pair bar */}
           <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-[hsl(220_28%_6%)] shrink-0">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <span className="font-bold text-foreground">{selPair}</span>
               {prices[selPair] && (
                 <>
@@ -650,14 +726,16 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
                   <span className={`text-xs font-semibold ${prices[selPair].changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                     {prices[selPair].changePct >= 0 ? '+' : ''}{prices[selPair].changePct.toFixed(2)}%
                   </span>
+                  <span className="text-[10px] text-muted-foreground">
+                    Bid <span className="font-mono text-foreground">{fmtPrice(prices[selPair].bid, prices[selPair].dec)}</span>
+                    &nbsp;·&nbsp;
+                    Ask <span className="font-mono text-foreground">{fmtPrice(prices[selPair].ask, prices[selPair].dec)}</span>
+                  </span>
                 </>
               )}
             </div>
-            <div className="flex gap-2">
-              <button onClick={() => setOrderPair(selPair)}
-                className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-all">
-                Buy / Sell
-              </button>
+            <div className="text-[10px] text-muted-foreground hidden lg:flex gap-3">
+              {prices[selPair] && <span>Spread: <span className="font-mono text-foreground">{prices[selPair].spreadPips.toFixed(1)}p</span></span>}
             </div>
           </div>
 
@@ -667,22 +745,24 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
           </div>
         </div>
 
-        {/* ── Right panel: Positions / History ── */}
-        <div className="w-[300px] shrink-0 flex flex-col border-l border-border bg-[hsl(220_28%_6%)] overflow-hidden">
+        {/* ── Right panel ── */}
+        <div className="w-[310px] shrink-0 flex flex-col border-l border-border bg-[hsl(220_28%_6%)] overflow-hidden">
           {/* Tabs */}
           <div className="flex border-b border-border shrink-0">
-            {(['positions', 'history'] as const).map(t => (
+            {([
+              ['trade', 'Trade'],
+              ['positions', `Positions${account ? ` (${account.positions.length})` : ''}`],
+              ['history', 'History'],
+            ] as const).map(([t, label]) => (
               <button key={t} onClick={() => setActiveTab(t)}
-                className={`flex-1 py-2.5 text-[10px] font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px ${
+                className={`flex-1 py-2.5 text-[9px] font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px ${
                   activeTab === t ? 'border-blue-500 text-blue-400' : 'border-transparent text-muted-foreground hover:text-foreground'
                 }`}
-              >
-                {t === 'positions' ? `Positions${account ? ` (${account.positions.length})` : ''}` : 'History'}
-              </button>
+              >{label}</button>
             ))}
           </div>
 
-          {/* Mobile balance (visible < md) */}
+          {/* Mobile balance */}
           <div className="md:hidden grid grid-cols-3 gap-0 border-b border-border shrink-0">
             {[['Balance', fmt(bal), ''], ['Equity', fmt(eq), pnlCls(eq-bal)], ['P&L', `${fp>=0?'+':''}${fmt(fp)}`, pnlCls(fp)]].map(([l, v, c]) => (
               <div key={l} className="text-center py-2 border-r border-border last:border-r-0">
@@ -694,6 +774,13 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
 
           {/* Content */}
           <div className="flex-1 overflow-y-auto">
+
+            {/* ── Trade Tab ── */}
+            {activeTab === 'trade' && (
+              <TradePanel pair={selPair} prices={prices} balance={bal} onPlaced={loadAccount} />
+            )}
+
+            {/* ── Positions Tab ── */}
             {activeTab === 'positions' && (
               <div className="p-2 space-y-2">
                 {!account || account.positions.length === 0 ? (
@@ -705,20 +792,27 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
                 ) : (
                   account.positions.map(pos => (
                     <div key={pos.id} className="bg-[hsl(220_25%_8%)] border border-border/50 rounded-lg p-3">
-                      <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${pos.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{pos.action}</span>
                           <span className="text-xs font-bold text-foreground">{pos.pair}</span>
                         </div>
                         <span className={`text-xs font-mono font-bold ${pnlCls(pos.pnl)}`}>{pnlStr(pos.pnl)}</span>
                       </div>
-                      <div className="grid grid-cols-2 gap-x-3 text-[10px] text-muted-foreground mb-2">
+                      <div className="grid grid-cols-2 gap-x-3 text-[10px] text-muted-foreground mb-1.5">
                         <span>Open: <span className="text-foreground font-mono">{fmtPrice(pos.openPrice, pos.dec)}</span></span>
                         <span>Now: <span className="text-foreground font-mono">{fmtPrice(pos.currentPrice, pos.dec)}</span></span>
                         <span>Lots: <span className="text-foreground">{pos.lots}</span></span>
+                        <span>Time: <span className="text-foreground">{new Date(pos.openedAt).toLocaleTimeString()}</span></span>
                       </div>
+                      {(pos.sl || pos.tp) && (
+                        <div className="flex gap-3 text-[10px] mb-1.5">
+                          {pos.sl && <span className="text-red-400/80">SL: <span className="font-mono text-red-300">{fmtPrice(pos.sl, pos.dec)}</span></span>}
+                          {pos.tp && <span className="text-emerald-400/80">TP: <span className="font-mono text-emerald-300">{fmtPrice(pos.tp, pos.dec)}</span></span>}
+                        </div>
+                      )}
                       <button onClick={() => closePosition(pos.id)} disabled={!!closing[pos.id]}
-                        className="w-full py-1 text-[10px] border border-red-900/40 text-red-400/70 hover:text-red-400 hover:border-red-700/50 rounded-md transition-colors disabled:opacity-40 font-semibold">
+                        className="w-full py-1 text-[10px] border border-red-900/40 text-red-400/70 hover:text-red-400 hover:border-red-700/50 hover:bg-red-900/10 rounded-md transition-colors disabled:opacity-40 font-semibold">
                         {closing[pos.id] ? 'Closing…' : 'Close Position'}
                       </button>
                     </div>
@@ -727,6 +821,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
               </div>
             )}
 
+            {/* ── History Tab ── */}
             {activeTab === 'history' && (
               <div className="p-2 space-y-2">
                 {history.length === 0 ? (
@@ -742,6 +837,10 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
                         </div>
                         <span className={`text-xs font-mono font-bold ${pnlCls(t.pnl)}`}>{pnlStr(t.pnl)}</span>
                       </div>
+                      <div className="grid grid-cols-2 gap-x-3 text-[10px] text-muted-foreground mb-0.5">
+                        <span>Open: <span className="font-mono text-foreground/70">{t.openPrice?.toFixed(5)}</span></span>
+                        <span>Close: <span className="font-mono text-foreground/70">{t.closePrice?.toFixed(5)}</span></span>
+                      </div>
                       <div className="text-[10px] text-muted-foreground/50">
                         {t.closedAt ? new Date(t.closedAt).toLocaleString() : ''}
                       </div>
@@ -752,13 +851,16 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
             )}
           </div>
 
+          {/* Margin Level Bar */}
+          {account && <MarginBar level={account.marginLevel} marginUsed={account.marginUsed} />}
+
           {/* Stats footer */}
           {account && (
             <div className="shrink-0 border-t border-border px-3 py-2 grid grid-cols-2 gap-2 text-[10px]">
               <div><span className="text-muted-foreground">Trades: </span><span className="font-semibold">{account.totalTrades}</span></div>
               <div><span className="text-muted-foreground">Win rate: </span><span className="font-semibold">{account.totalTrades > 0 ? `${account.winRate}%` : '—'}</span></div>
               <div><span className="text-muted-foreground">Realized: </span><span className={`font-semibold ${pnlCls(account.realizedPnl)}`}>{pnlStr(account.realizedPnl)}</span></div>
-              <div><span className="text-muted-foreground">Free margin: </span><span className="font-semibold">{fmt(account.freeMargin)}</span></div>
+              <div><span className="text-muted-foreground">Margin used: </span><span className="font-semibold">{fmt(account.marginUsed, 0)}</span></div>
             </div>
           )}
         </div>
@@ -767,13 +869,6 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
       {/* ── Modals ── */}
       {showDep  && <DepositModal  onClose={() => { setShowDep(false);  loadAccount(); }} />}
       {showWith && <WithdrawModal balance={bal} onClose={() => { setShowWith(false); loadAccount(); }} />}
-      {orderPair && (
-        <OrderModal
-          pair={orderPair} prices={prices} balance={bal}
-          onClose={() => setOrderPair(null)}
-          onPlaced={() => { setOrderPair(null); loadAccount(); }}
-        />
-      )}
     </div>
   );
 }

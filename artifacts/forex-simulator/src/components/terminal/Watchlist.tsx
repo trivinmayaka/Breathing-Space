@@ -19,7 +19,7 @@ export function Watchlist({ selectedPair, onSelectPair }: WatchlistProps) {
   }
 
   const groups: Record<string, [string, PriceData][]> = {};
-  Object.entries(prices).forEach(([pair, data]) => {
+  (Object.entries(prices) as [string, PriceData][]).forEach(([pair, data]) => {
     if (!groups[data.group]) groups[data.group] = [];
     groups[data.group].push([pair, data]);
   });

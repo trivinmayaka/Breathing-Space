@@ -12,7 +12,7 @@ export function OwnerBanner({ onGoAdmin, onLogout }: OwnerBannerProps) {
         {/* Brand */}
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded brand-gradient flex items-center justify-center font-black text-white text-[9px]">T</div>
-          <span className="font-bold text-foreground/90 tracking-tight">TrivinFX<span className="text-blue-400">Pro</span></span>
+          <span className="font-bold text-foreground/90 tracking-tight">TmFX<span className="text-blue-400">Pro</span></span>
         </div>
         <div className="w-px h-4 bg-border" />
         {/* Live badge */}

@@ -86,7 +86,7 @@ function PositionsTab() {
       </div>
 
       <div className="flex-1">
-        {positions.map(pos => {
+        {(positions as any[]).map((pos: any) => {
           const pnlClass = pos.pnl > 0 ? 'text-profit' : pos.pnl < 0 ? 'text-loss' : 'text-muted-foreground';
           return (
             <div key={pos.id} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-2 items-center px-3 py-2.5 border-b border-border/40 hover:bg-surface/30 group transition-colors">
@@ -145,8 +145,8 @@ function HistoryTab() {
     );
   }
 
-  const totalPnl  = history.reduce((s, t) => s + t.pnl, 0);
-  const wins      = history.filter(t => t.pnl > 0).length;
+  const totalPnl  = (history as any[]).reduce((s: number, t: any) => s + t.pnl, 0);
+  const wins      = (history as any[]).filter((t: any) => t.pnl > 0).length;
   const winRate   = history.length ? (wins / history.length) * 100 : 0;
 
   return (
@@ -158,7 +158,7 @@ function HistoryTab() {
       </div>
 
       <div className="flex-1">
-        {history.map(trade => {
+        {(history as any[]).map((trade: any) => {
           const pnlClass = trade.pnl > 0 ? 'text-profit' : trade.pnl < 0 ? 'text-loss' : 'text-muted-foreground';
           return (
             <div key={trade.id} className="grid grid-cols-[1fr_auto_auto] gap-x-2 items-center px-3 py-2.5 border-b border-border/40 hover:bg-surface/30 transition-colors">

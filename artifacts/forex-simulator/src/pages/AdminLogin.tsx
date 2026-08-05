@@ -10,7 +10,7 @@ function Logo() {
     <div className="flex items-center gap-2.5 select-none">
       <div className="w-7 h-7 rounded-md brand-gradient flex items-center justify-center font-black text-white text-xs shadow-lg">T</div>
       <span className="font-bold text-base tracking-tight text-foreground">
-        TrivinFX<span className="brand-gradient-text">Pro</span>
+        TmFX<span className="brand-gradient-text">Pro</span>
       </span>
     </div>
   );

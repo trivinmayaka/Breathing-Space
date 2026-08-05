@@ -8,7 +8,7 @@ import { OwnerTerminal } from './pages/OwnerTerminal';
 import LiveAuth from './pages/LiveAuth';
 import { LiveTerminal } from './pages/LiveTerminal';
 
-const BRAND = 'TrivinFX';
+const BRAND = 'TmFX';
 const BRAND_SUB = 'Pro';
 const API = '/api';
 
@@ -391,7 +391,7 @@ function LandingPage({ onDemo, onReal }: { onDemo: () => void; onReal: () => voi
       <section className="border-t border-border/50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-16">
           <div className="text-center mb-12">
-            <p className="text-[11px] text-blue-400 uppercase tracking-widest font-bold mb-2">Why TrivinFX Pro</p>
+            <p className="text-[11px] text-blue-400 uppercase tracking-widest font-bold mb-2">Why TmFXPro</p>
             <h2 className="text-3xl font-black text-foreground">Everything You Need to Trade</h2>
             <p className="text-muted-foreground mt-3 max-w-xl mx-auto">Professional-grade tools used by institutional traders, available to everyone.</p>
           </div>
