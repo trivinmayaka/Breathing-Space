@@ -95,7 +95,7 @@ const DEPOSIT_METHODS = [
     color: 'amber',
     instructions: [
       { label: 'Network', value: 'TRC20 (Tron)' },
-      { label: 'Wallet Address', value: 'TRxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx' },
+      { label: 'Wallet Address', value: 'TPNxwfLXEK9KKTLCS9WTASxkJWDjnqF3Qe' },
     ],
     hint: 'Send USDT via TRC20 only. Paste the transaction hash below after sending.',
     refPlaceholder: 'Transaction hash (TxID)',
