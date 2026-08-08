@@ -4,12 +4,13 @@ A Forex trading simulator platform with a demo account terminal, live real-accou
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
+- `pnpm --filter @workspace/forex-simulator run dev` — run the TrivinFX Pro frontend
+- `pnpm --filter @workspace/api-server run dev` — run the API server (port 8080)
 - `pnpm run typecheck` — full typecheck across all packages
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- Required secrets: `ADMIN_PASSWORD` — password for the admin dashboard; `DATABASE_URL` is provided by Replit's managed PostgreSQL
 
 ## Stack
 
@@ -22,15 +23,20 @@ A Forex trading simulator platform with a demo account terminal, live real-accou
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/forex-simulator` — React/Vite frontend and public trading experience
+- `artifacts/api-server` — Express API and admin routes
+- `lib/db` — Drizzle schema and database client
+- `lib/api-spec` — OpenAPI source of truth and generated client contracts
 
 ## Architecture decisions
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+- The imported pnpm workspace and existing React/Vite + Express stack are kept intact.
+- The frontend and API are registered as separate Replit artifacts with managed workflows.
 
 ## Product
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+TrivinFX Pro provides demo and real-account Forex trading experiences, market data displays,
+trading terminals, and an admin dashboard for account and platform management.
 
 ## User preferences
 
@@ -38,7 +44,10 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- Admin routes return a configuration error until the `ADMIN_PASSWORD` Replit secret exists.
+- The API health check is available at `/api/healthz`.
+- The current API production build starts successfully; the workspace typecheck still reports
+  pre-existing typing errors in several API route files.
 
 ## Pointers
 
