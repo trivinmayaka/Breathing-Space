@@ -166,6 +166,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
   const [loading, setLoading]   = useState(false);
   const [err, setErr]           = useState('');
   const [credited, setCredited] = useState('');
+  const [paymentPending, setPaymentPending] = useState(false);
 
   const method = DEPOSIT_METHODS.find(m => m.id === methodId);
 
@@ -176,13 +177,21 @@ function DepositModal({ onClose }: { onClose: () => void }) {
     if (!method) return;
     setErr(''); setLoading(true);
     try {
+      const isMpesa = method.id === 'mpesa';
       const res = await fetch(`${API}/live/deposit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, paymentMethod: method.label, paymentReference: ref, contact }),
+        body: JSON.stringify({
+          amount,
+          paymentMethod: method.label,
+          paymentReference: ref,
+          contact: isMpesa ? contact : contact,
+          phoneNumber: isMpesa ? contact : undefined,
+        }),
       });
       const data = await res.json();
       if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
+      setPaymentPending(data.status === 'pending');
       setCredited(data.message ?? `$${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2 })} credited to your account.`);
       setStep('done');
     } catch { setErr('Network error. Please try again.'); }
@@ -243,32 +252,38 @@ function DepositModal({ onClose }: { onClose: () => void }) {
               <p className="text-[11px] text-foreground/60 leading-relaxed pt-1 border-t border-current/20">{method.hint}</p>
             </div>
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Amount (USD)</label>
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Amount ({method.id === 'mpesa' ? 'KES' : 'USD'})
+              </label>
               <input required type="number" min="1" max="1000000" step="0.01"
                 value={amount} onChange={e => { setAmount(e.target.value); setErr(''); }}
-                placeholder="e.g. 500"
+                placeholder={method.id === 'mpesa' ? 'e.g. 1,000' : 'e.g. 500'}
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Transaction Reference / ID</label>
-              <input required type="text"
-                value={ref} onChange={e => { setRef(e.target.value); setErr(''); }}
-                placeholder={method.refPlaceholder}
-                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Your Phone or Email</label>
-              <input required type="text"
+              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                {method.id === 'mpesa' ? 'M-Pesa Phone Number' : 'Your Phone or Email'}
+              </label>
+              <input required type={method.id === 'mpesa' ? 'tel' : 'text'} inputMode={method.id === 'mpesa' ? 'tel' : undefined}
                 value={contact} onChange={e => { setContact(e.target.value); setErr(''); }}
-                placeholder="For deposit confirmation"
+                placeholder={method.id === 'mpesa' ? 'e.g. 0712345678' : 'For deposit confirmation'}
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
+            {method.id !== 'mpesa' && (
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Transaction Reference / ID</label>
+                <input required type="text"
+                  value={ref} onChange={e => { setRef(e.target.value); setErr(''); }}
+                  placeholder={method.refPlaceholder}
+                  className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
+              </div>
+            )}
             {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
             <button type="submit" disabled={loading}
               className={`w-full h-11 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 ${btnMap[method.color] ?? btnMap.emerald}`}>
               {loading
                 ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Submitting…</>
-                : <>Submit Deposit Request</>}
+                 : method.id === 'mpesa' ? <>Send M-Pesa Prompt</> : <>Submit Deposit Request</>}
             </button>
           </form>
         )}
@@ -278,11 +293,15 @@ function DepositModal({ onClose }: { onClose: () => void }) {
             <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
               <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
             </div>
-            <p className="text-base font-bold text-foreground">Deposit Successful!</p>
+               <p className="text-base font-bold text-foreground">{paymentPending ? 'Payment Prompt Sent' : 'Deposit Successful!'}</p>
             <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3 w-full">
               <p className="text-sm text-emerald-300 font-semibold">{credited}</p>
             </div>
-            <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">Your balance has been updated. You can start trading immediately.</p>
+             <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
+               {paymentPending
+                 ? 'Approve the prompt on your phone. Your trading balance will update automatically once IntaSend confirms the payment.'
+                 : 'Your balance has been updated. You can start trading immediately.'}
+             </p>
             <button onClick={onClose} className="mt-2 px-8 h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all w-full">
               Start Trading
             </button>

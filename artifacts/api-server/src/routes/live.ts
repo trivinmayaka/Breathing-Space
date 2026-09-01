@@ -7,6 +7,13 @@ import {
 } from "@workspace/db";
 import { desc as descOrder } from "drizzle-orm";
 import { getPriceSnapshot, getCandleData, calcPnl, INSTRUMENTS } from "../lib/forex-sim";
+import { randomUUID } from "crypto";
+import {
+  initiateMpesaStkPush,
+  isIntaSendConfigured,
+  normalizeKenyanPhone,
+  getProviderTransactionId,
+} from "../lib/intasend";
 import type { Request, Response, NextFunction } from "express";
 
 const scryptAsync = promisify(scrypt);
@@ -321,14 +328,60 @@ router.get("/live/history", requireLive, async (req, res) => {
 router.post("/live/deposit", requireLive, async (req, res) => {
   try {
     const trader = (req as any).liveTrader as { id: number; email: string; fullName: string };
-    const { amount, paymentMethod, paymentReference, contact } = req.body as Record<string, string>;
+    const { amount, paymentMethod, paymentReference, contact, phoneNumber } =
+      req.body as Record<string, string>;
 
-    if (!paymentMethod?.trim() || !paymentReference?.trim()) {
-      return void res.status(400).json({ error: "Payment method and reference are required." });
+    if (!paymentMethod?.trim()) {
+      return void res.status(400).json({ error: "Payment method is required." });
     }
     const amt = parseFloat(amount);
-    if (isNaN(amt) || amt <= 0 || amt > 10_000_000) {
-      return void res.status(400).json({ error: "Enter a valid amount (1 – 10,000,000)." });
+    if (isNaN(amt) || amt <= 0 || amt > 1_000_000) {
+      return void res.status(400).json({ error: "Enter a valid amount (1 – 1,000,000)." });
+    }
+
+    if (paymentMethod.trim().toLowerCase() === "m-pesa") {
+      if (!isIntaSendConfigured()) {
+        return void res.status(503).json({
+          error: "M-Pesa deposits are not configured yet. Please contact support.",
+        });
+      }
+      const normalizedPhone = normalizeKenyanPhone(phoneNumber ?? contact ?? "");
+      if (!normalizedPhone) {
+        return void res.status(400).json({
+          error: "Enter a valid Kenyan M-Pesa number, such as 0712345678.",
+        });
+      }
+
+      const apiRef = `trader-${trader.id}-deposit-${randomUUID()}`;
+      const stk = await initiateMpesaStkPush({
+        amount: amt,
+        phoneNumber: normalizedPhone,
+        apiRef,
+      });
+      const providerTransactionId = getProviderTransactionId(stk);
+
+      await db.insert(depositRequests).values({
+        sessionId: liveSessionId(trader.id),
+        traderName: trader.fullName,
+        contact: normalizedPhone,
+        amount: amt,
+        paymentMethod: "M-Pesa",
+        paymentReference: apiRef,
+        paymentProvider: "intasend",
+        providerTransactionId,
+        status: "pending",
+      });
+
+      return void res.status(202).json({
+        ok: true,
+        status: "pending",
+        message: `Approve the M-Pesa prompt sent to ${normalizedPhone}. Your balance will update automatically after payment confirmation.`,
+        reference: apiRef,
+      });
+    }
+
+    if (!paymentReference?.trim()) {
+      return void res.status(400).json({ error: "Payment reference is required." });
     }
 
     // Auto-approve: credit balance immediately and record as approved

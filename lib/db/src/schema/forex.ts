@@ -44,6 +44,8 @@ export const depositRequests = pgTable("deposit_requests", {
   amount:           real("amount").notNull(),
   paymentMethod:    text("payment_method").notNull(),
   paymentReference: text("payment_reference").notNull(),
+  paymentProvider:  text("payment_provider"),
+  providerTransactionId: text("provider_transaction_id"),
   status:           text("status").notNull().default("pending"), // pending | approved | rejected
   createdAt:        timestamp("created_at").defaultNow(),
   reviewedAt:       timestamp("reviewed_at"),

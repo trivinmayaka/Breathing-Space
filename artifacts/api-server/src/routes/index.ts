@@ -5,6 +5,7 @@ import adminRouter from "./admin";
 import realRouter from "./real";
 import depositsRouter from "./deposits";
 import liveRouter from "./live";
+import paymentsRouter from "./payments";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(adminRouter);
 router.use(realRouter);
 router.use(depositsRouter);
 router.use(liveRouter);
+router.use(paymentsRouter);
 
 export default router;
