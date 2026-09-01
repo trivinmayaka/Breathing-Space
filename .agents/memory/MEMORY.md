@@ -1,0 +1,1 @@
+- [IntaSend payment setup](intasend-setup.md) — IntaSend is configured with server-side Replit Secrets and needs a published webhook URL before live callbacks can arrive.
