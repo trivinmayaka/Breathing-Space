@@ -10,7 +10,9 @@ A Forex trading simulator platform with a demo account terminal, live real-accou
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required secrets: `ADMIN_PASSWORD` — password for the admin dashboard; `DATABASE_URL` is provided by Replit's managed PostgreSQL
+- Required secrets: `ADMIN_PASSWORD` — password for the admin dashboard; `INTASEND_SECRET_KEY` — server-only IntaSend API key
+- Optional env: `INTASEND_ENVIRONMENT=sandbox` to use IntaSend's sandbox; production is the default
+- `DATABASE_URL` is provided by Replit's managed PostgreSQL
 
 ## Stack
 
@@ -46,6 +48,9 @@ _Populate as you build — explicit user instructions worth remembering across s
 
 - Admin routes return a configuration error until the `ADMIN_PASSWORD` Replit secret exists.
 - The API health check is available at `/api/healthz`.
+- M-Pesa deposits use IntaSend STK Push in KES and remain pending until the webhook confirms a successful payment.
+- Configure IntaSend's webhook callback as `/api/payments/intasend/webhook` on the published app URL.
+- Duplicate IntaSend webhook deliveries are ignored after the first successful credit.
 - The current API production build starts successfully; the workspace typecheck still reports
   pre-existing typing errors in several API route files.
 
