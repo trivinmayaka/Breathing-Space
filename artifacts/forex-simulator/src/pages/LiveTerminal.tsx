@@ -902,7 +902,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
         {/* ── Chart ── */}
         <div className="flex flex-col flex-1 min-w-0 min-h-[340px] lg:min-h-0">
           {/* Chart */}
-          <div className="flex-1 min-h-0">
+          <div className="flex flex-col flex-1 min-h-0">
             <ChartArea selectedPair={selPair} />
           </div>
         </div>
