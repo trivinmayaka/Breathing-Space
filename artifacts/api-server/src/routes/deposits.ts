@@ -57,7 +57,7 @@ router.get("/admin/deposits", requireAdmin, async (_req, res) => {
 
 // ── POST /api/admin/deposits/:id/approve  ── credit account ──────────────────
 router.post("/admin/deposits/:id/approve", requireAdmin, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
 
   const [dep] = await db.select().from(depositRequests).where(eq(depositRequests.id, id));
@@ -100,7 +100,7 @@ router.post("/admin/deposits/:id/approve", requireAdmin, async (req, res) => {
 
 // ── POST /api/admin/deposits/:id/reject  ── reject request ───────────────────
 router.post("/admin/deposits/:id/reject", requireAdmin, async (req, res) => {
-  const id = parseInt(req.params.id, 10);
+  const id = parseInt(String(req.params.id), 10);
   if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
 
   const [dep] = await db.select().from(depositRequests).where(eq(depositRequests.id, id));

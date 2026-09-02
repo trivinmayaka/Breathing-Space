@@ -7,13 +7,32 @@ const API = '/api';
 interface LivePosition {
   id: number; pair: string; action: string; lots: number;
   openPrice: number; currentPrice: number; pnl: number;
-  sl: number | null; tp: number | null; openedAt: string; dec: number;
+  orderType: string; status: string; triggerPrice: number | null;
+  sl: number | null; tp: number | null; trailingStopPips: number | null;
+  leverage: number; commission: number; swap: number;
+  openedAt: string; dec: number;
 }
 interface LiveAccount {
   balance: number; equity: number; floatingPnl: number;
   marginUsed: number; freeMargin: number; marginLevel: number;
   totalTrades: number; winRate: number; realizedPnl: number;
   positions: LivePosition[];
+  pendingOrders: LivePendingOrder[];
+  marketData?: { source: string; status: string };
+}
+interface LivePendingOrder {
+  id: number; pair: string; action: string; lots: number; orderType: string;
+  triggerPrice: number | null; sl: number | null; tp: number | null;
+  trailingStopPips: number | null; leverage: number; currentPrice: number;
+  createdAt: string;
+}
+interface FundingRecord {
+  id: number; amount: number; paymentMethod: string; paymentReference: string;
+  status: string; createdAt?: string; reviewedAt?: string | null; note?: string | null;
+}
+interface WithdrawalRecord {
+  id: number; amount: number; paymentMethod: string; accountDetails: string;
+  status: string; createdAt?: string; note?: string | null;
 }
 interface PriceData {
   bid: number; ask: number; mid: number; spreadPips: number;
@@ -224,7 +243,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
 
         {step === 'pick' && (
           <div className="p-5 grid grid-cols-3 gap-3">
-            {DEPOSIT_METHODS.map(m => {
+            {DEPOSIT_METHODS.filter(m => m.id === 'mpesa').map(m => {
               const cls = colorMap[m.color] ?? colorMap.emerald;
               return (
                 <button key={m.id} onClick={() => pick(m.id)}
@@ -234,6 +253,9 @@ function DepositModal({ onClose }: { onClose: () => void }) {
                 </button>
               );
             })}
+            <div className="col-span-3 text-[11px] text-center text-muted-foreground/60 pt-1">
+              Only verified M-Pesa STK Push deposits are currently available. Other funding methods are disabled until verified.
+            </div>
           </div>
         )}
 
@@ -253,31 +275,23 @@ function DepositModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                Amount ({method.id === 'mpesa' ? 'KES' : 'USD'})
+                 Amount (KES)
               </label>
               <input required type="number" min="1" max="1000000" step="0.01"
                 value={amount} onChange={e => { setAmount(e.target.value); setErr(''); }}
-                placeholder={method.id === 'mpesa' ? 'e.g. 1,000' : 'e.g. 500'}
+                 placeholder="e.g. 1,000"
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                {method.id === 'mpesa' ? 'M-Pesa Phone Number' : 'Your Phone or Email'}
+                 M-Pesa Phone Number
               </label>
-              <input required type={method.id === 'mpesa' ? 'tel' : 'text'} inputMode={method.id === 'mpesa' ? 'tel' : undefined}
+               <input required type="tel" inputMode="tel"
                 value={contact} onChange={e => { setContact(e.target.value); setErr(''); }}
-                placeholder={method.id === 'mpesa' ? 'e.g. 0712345678' : 'For deposit confirmation'}
+                 placeholder="e.g. 0712345678"
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
-            {method.id !== 'mpesa' && (
-              <div>
-                <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Transaction Reference / ID</label>
-                <input required type="text"
-                  value={ref} onChange={e => { setRef(e.target.value); setErr(''); }}
-                  placeholder={method.refPlaceholder}
-                  className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
-              </div>
-            )}
+             <p className="text-[10px] text-muted-foreground/60">Your balance remains pending until IntaSend confirms the payment. Do not send funds to unverified payment details.</p>
             {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
             <button type="submit" disabled={loading}
               className={`w-full h-11 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 ${btnMap[method.color] ?? btnMap.emerald}`}>
@@ -314,7 +328,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
 
 // ─── Withdrawal Modal ─────────────────────────────────────────────────────────
 function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => void }) {
-  const WITHDRAW_METHODS = ['M-Pesa', 'Airtel Money', 'Bank Transfer', 'Crypto (USDT)', 'Western Union'];
+  const WITHDRAW_METHODS = ['M-Pesa'];
   const [form, setForm] = useState({ amount: '', paymentMethod: '', accountDetails: '' });
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
@@ -379,11 +393,12 @@ function WithdrawModal({ balance, onClose }: { balance: number; onClose: () => v
               </select>
             </div>
             <div>
-              <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">Account Details</label>
+               <label className="block text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">M-Pesa Phone Number</label>
               <input type="text" value={form.accountDetails} onChange={e => set('accountDetails')(e.target.value)}
-                placeholder="Phone number, bank account, or wallet address"
+                 placeholder="e.g. 0712345678"
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/60 transition-all" />
             </div>
+             <p className="text-[10px] text-muted-foreground/60">Withdrawal requests are reviewed before payout. Only verified M-Pesa details are accepted at this time.</p>
             {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
             <button type="submit" disabled={loading || balance <= 0 || !form.amount || !form.paymentMethod || !form.accountDetails}
               className="w-full h-11 bg-amber-700 hover:bg-amber-600 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2">
@@ -403,9 +418,13 @@ function TradePanel({
   pair: string; prices: PriceSnapshot; balance: number; onPlaced: () => void;
 }) {
   const [action, setAction] = useState<'BUY' | 'SELL'>('BUY');
+  const [orderType, setOrderType] = useState<'market' | 'limit' | 'stop'>('market');
   const [lots, setLots]     = useState('0.10');
   const [sl, setSl]         = useState('');
   const [tp, setTp]         = useState('');
+  const [triggerPrice, setTriggerPrice] = useState('');
+  const [trailingStopPips, setTrailingStopPips] = useState('');
+  const [leverage, setLeverage] = useState('100');
   const [loading, setLoading] = useState(false);
   const [err, setErr]       = useState('');
   const [flash, setFlash]   = useState('');
@@ -421,8 +440,15 @@ function TradePanel({
     setErr(''); setLoading(true);
     try {
       const body: Record<string, unknown> = { pair, action, lots: parseFloat(lots) };
+      body.orderType = orderType;
+      body.leverage = parseInt(leverage, 10);
       if (sl) body.sl = parseFloat(sl);
       if (tp) body.tp = parseFloat(tp);
+      if (orderType !== 'market') {
+        if (!triggerPrice || isNaN(parseFloat(triggerPrice))) { setErr('Enter a valid trigger price for this pending order.'); return; }
+        body.triggerPrice = parseFloat(triggerPrice);
+      }
+      if (trailingStopPips) body.trailingStopPips = parseFloat(trailingStopPips);
       const res = await fetch(`${API}/live/orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -432,6 +458,7 @@ function TradePanel({
       if (!res.ok) { setErr(data.error ?? 'Failed'); return; }
       setFlash(`${action} ${lots}L @ ${fmtPrice(price, dec)}`);
       setSl(''); setTp('');
+      setTriggerPrice('');
       setTimeout(() => setFlash(''), 2500);
       onPlaced();
     } catch { setErr('Network error.'); }
@@ -440,6 +467,10 @@ function TradePanel({
 
   const lotsNum = parseFloat(lots) || 0;
   const pipVal  = pd ? (lotsNum * pd.pip * 10000) : 0; // approx pip value in USD
+  const entry = orderType === 'market' ? price : parseFloat(triggerPrice) || price;
+  const marginRequired = lotsNum * 100_000 / parseInt(leverage, 10);
+  const risk = sl && pd ? Math.abs(entry - parseFloat(sl)) / pd.pip * pipVal : 0;
+  const reward = tp && pd ? Math.abs(parseFloat(tp) - entry) / pd.pip * pipVal : 0;
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -469,6 +500,41 @@ function TradePanel({
           >{a}</button>
         ))}
       </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Order Type</label>
+          <select value={orderType} onChange={e => setOrderType(e.target.value as typeof orderType)}
+            className="w-full h-9 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50">
+            <option value="market">Market</option>
+            <option value="limit">Limit</option>
+            <option value="stop">Stop</option>
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">Leverage</label>
+          <select value={leverage} onChange={e => setLeverage(e.target.value)}
+            className="w-full h-9 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-2.5 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary/50">
+            {['25', '50', '100', '200'].map(value => <option key={value} value={value}>1:{value}</option>)}
+          </select>
+        </div>
+      </div>
+
+      {orderType !== 'market' && (
+        <div>
+          <label className="block text-[10px] font-bold uppercase tracking-wider text-primary mb-1">
+            Trigger Price <span className="font-normal normal-case text-muted-foreground">(entry)</span>
+          </label>
+          <input type="number" value={triggerPrice} onChange={e => setTriggerPrice(e.target.value)} step="0.00001"
+            placeholder={price ? fmtPrice(price, dec) : 'Required'}
+            className="w-full h-9 bg-[hsl(220_25%_10%)] border border-primary/30 rounded-lg px-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40" />
+          <p className="text-[9px] text-muted-foreground/60 mt-1">
+            {action === 'BUY'
+              ? `${orderType === 'limit' ? 'Below' : 'Above'} current ask`
+              : `${orderType === 'limit' ? 'Above' : 'Below'} current bid`}
+          </p>
+        </div>
+      )}
 
       {/* Live bid/ask */}
       {pd && (
@@ -527,6 +593,20 @@ function TradePanel({
         </div>
       </div>
 
+      <div>
+        <label className="block text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+          Trailing Stop <span className="font-normal normal-case text-muted-foreground">(pips, optional)</span>
+        </label>
+        <input type="number" value={trailingStopPips} onChange={e => setTrailingStopPips(e.target.value)} min="1" step="1" placeholder="Disabled"
+          className="w-full h-9 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-2.5 text-xs font-mono text-foreground placeholder:text-muted-foreground/30 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all" />
+      </div>
+
+      <div className="grid grid-cols-3 gap-1.5 text-[10px] bg-blue-500/5 border border-blue-500/10 rounded-lg px-2.5 py-2">
+        <div><span className="text-muted-foreground block">Margin req.</span><span className="font-mono text-foreground">${marginRequired.toFixed(2)}</span></div>
+        <div><span className="text-muted-foreground block">Risk preview</span><span className="font-mono text-red-300">{risk ? `-$${risk.toFixed(2)}` : '—'}</span></div>
+        <div><span className="text-muted-foreground block">Reward</span><span className="font-mono text-emerald-300">{reward ? `+$${reward.toFixed(2)}` : '—'}</span></div>
+      </div>
+
       {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
 
       {/* Execute button */}
@@ -537,7 +617,7 @@ function TradePanel({
       >
         {loading
           ? <><svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>Placing…</>
-          : <>{action} {pair} · {lots}L{pd ? ` @ ${fmtPrice(price, dec)}` : ''}</>
+           : <>{orderType === 'market' ? action : `${orderType.toUpperCase()} ${action}`} {pair} · {lots}L{pd ? ` @ ${fmtPrice(entry, dec)}` : ''}</>
         }
       </button>
     </div>
@@ -576,9 +656,20 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
   const [selPair,   setSelPair]   = useState('EUR/USD');
   const [showDep,   setShowDep]   = useState(false);
   const [showWith,  setShowWith]  = useState(false);
-  const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'history'>('trade');
+  const [activeTab, setActiveTab] = useState<'trade' | 'positions' | 'history' | 'funding'>('trade');
   const [history,   setHistory]   = useState<any[]>([]);
+  const [funding,   setFunding]   = useState<FundingRecord[]>([]);
+  const [withdrawals, setWithdrawals] = useState<WithdrawalRecord[]>([]);
   const [closing,   setClosing]   = useState<Record<number, boolean>>({});
+  const [partialLots, setPartialLots] = useState<Record<number, string>>({});
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editSl, setEditSl] = useState('');
+  const [editTp, setEditTp] = useState('');
+  const [editTrail, setEditTrail] = useState('');
+  const [alertTarget, setAlertTarget] = useState('');
+  const [alertDirection, setAlertDirection] = useState<'above' | 'below'>('above');
+  const [alertMessage, setAlertMessage] = useState('');
+  const marginAlertSent = useRef(false);
   const [search,    setSearch]    = useState('');
 
   const loadAccount = useCallback(async () => {
@@ -603,6 +694,20 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
     } catch {}
   }, []);
 
+  const loadFunding = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/live/deposits`);
+      if (res.ok) setFunding(await res.json());
+    } catch {}
+  }, []);
+
+  const loadWithdrawals = useCallback(async () => {
+    try {
+      const res = await fetch(`${API}/live/withdrawals`);
+      if (res.ok) setWithdrawals(await res.json());
+    } catch {}
+  }, []);
+
   useEffect(() => {
     loadAccount(); loadPrices();
     const id1 = setInterval(loadAccount, 3000);
@@ -612,16 +717,77 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
 
   useEffect(() => {
     if (activeTab === 'history') loadHistory();
-  }, [activeTab, loadHistory]);
+    if (activeTab === 'funding') loadFunding();
+    if (activeTab === 'funding') loadWithdrawals();
+  }, [activeTab, loadHistory, loadFunding, loadWithdrawals]);
+
+  useEffect(() => {
+    const target = parseFloat(alertTarget);
+    const current = prices[selPair]?.mid;
+    if (!current || !target || !alertTarget) return;
+    const reached = alertDirection === 'above' ? current >= target : current <= target;
+    if (reached) {
+      setAlertMessage(`${selPair} reached ${fmtPrice(target, prices[selPair].dec)}.`);
+      setAlertTarget('');
+    }
+  }, [prices, selPair, alertTarget, alertDirection]);
+
+  useEffect(() => {
+    if (account?.marginUsed && account.marginLevel < 100 && !marginAlertSent.current) {
+      marginAlertSent.current = true;
+      setAlertMessage(`Margin alert: margin level is ${account.marginLevel.toFixed(0)}%. Consider reducing exposure.`);
+    }
+    if (account?.marginLevel && account.marginLevel >= 120) marginAlertSent.current = false;
+  }, [account?.marginLevel, account?.marginUsed]);
 
   async function closePosition(id: number) {
     setClosing(c => ({ ...c, [id]: true }));
     try {
-      await fetch(`${API}/live/positions/${id}`, { method: 'DELETE' });
+      const res = await fetch(`${API}/live/positions/${id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setAlertMessage(data.error ?? 'Could not close this order.');
+      }
       await loadAccount();
     } finally {
       setClosing(c => { const n = { ...c }; delete n[id]; return n; });
     }
+  }
+
+  async function partialClose(id: number) {
+    const lots = parseFloat(partialLots[id] ?? '');
+    if (!lots) return;
+    const res = await fetch(`${API}/live/positions/${id}/partial-close`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lots }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) setAlertMessage(data.error ?? 'Partial close failed.');
+    else {
+      setAlertMessage(`Partial close executed. P&L ${pnlStr(Number(data.pnl ?? 0))}.`);
+      setPartialLots(p => ({ ...p, [id]: '' }));
+      await loadAccount();
+    }
+  }
+
+  function startEdit(pos: LivePosition) {
+    setEditing(pos.id);
+    setEditSl(pos.sl?.toString() ?? '');
+    setEditTp(pos.tp?.toString() ?? '');
+    setEditTrail(pos.trailingStopPips?.toString() ?? '');
+  }
+
+  async function saveEdit(id: number) {
+    const res = await fetch(`${API}/live/positions/${id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        sl: editSl ? parseFloat(editSl) : null,
+        tp: editTp ? parseFloat(editTp) : null,
+        trailingStopPips: editTrail ? parseFloat(editTrail) : null,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) setAlertMessage(data.error ?? 'Could not update position.');
+    else { setEditing(null); await loadAccount(); }
   }
 
   const bal = account?.balance ?? 0;
@@ -643,7 +809,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
           </span>
           <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
             <span className="live-dot" style={{ width: 5, height: 5 }} />
-            <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-400">Live</span>
+             <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-400">Live Account</span>
           </div>
         </div>
 
@@ -700,10 +866,10 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
       </div>
 
       {/* ── Body ── */}
-      <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex flex-1 min-h-0 overflow-hidden flex-col lg:flex-row">
 
         {/* ── Watchlist ── */}
-        <div className="w-[155px] shrink-0 flex flex-col border-r border-border bg-[hsl(220_28%_6%)] overflow-hidden">
+        <div className="hidden lg:flex w-[155px] shrink-0 flex-col border-r border-border bg-[hsl(220_28%_6%)] overflow-hidden">
           <div className="px-2 py-2 border-b border-border shrink-0">
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
               className="w-full h-7 bg-[hsl(220_25%_10%)] border border-border rounded px-2 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40" />
@@ -734,30 +900,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
         </div>
 
         {/* ── Chart ── */}
-        <div className="flex flex-col flex-1 min-w-0 min-h-0">
-          {/* Pair bar */}
-          <div className="flex items-center justify-between px-4 py-2 border-b border-border bg-[hsl(220_28%_6%)] shrink-0">
-            <div className="flex items-center gap-3 flex-wrap">
-              <span className="font-bold text-foreground">{selPair}</span>
-              {prices[selPair] && (
-                <>
-                  <span className="font-mono text-lg text-foreground">{fmtPrice(prices[selPair].mid, prices[selPair].dec)}</span>
-                  <span className={`text-xs font-semibold ${prices[selPair].changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                    {prices[selPair].changePct >= 0 ? '+' : ''}{prices[selPair].changePct.toFixed(2)}%
-                  </span>
-                  <span className="text-[10px] text-muted-foreground">
-                    Bid <span className="font-mono text-foreground">{fmtPrice(prices[selPair].bid, prices[selPair].dec)}</span>
-                    &nbsp;·&nbsp;
-                    Ask <span className="font-mono text-foreground">{fmtPrice(prices[selPair].ask, prices[selPair].dec)}</span>
-                  </span>
-                </>
-              )}
-            </div>
-            <div className="text-[10px] text-muted-foreground hidden lg:flex gap-3">
-              {prices[selPair] && <span>Spread: <span className="font-mono text-foreground">{prices[selPair].spreadPips.toFixed(1)}p</span></span>}
-            </div>
-          </div>
-
+        <div className="flex flex-col flex-1 min-w-0 min-h-[340px] lg:min-h-0">
           {/* Chart */}
           <div className="flex-1 min-h-0">
             <ChartArea selectedPair={selPair} />
@@ -765,13 +908,14 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
         </div>
 
         {/* ── Right panel ── */}
-        <div className="w-[310px] shrink-0 flex flex-col border-l border-border bg-[hsl(220_28%_6%)] overflow-hidden">
+        <div className="w-full lg:w-[310px] shrink-0 flex flex-col border-l-0 lg:border-l border-t lg:border-t-0 border-border bg-[hsl(220_28%_6%)] overflow-hidden min-h-[300px] lg:min-h-0">
           {/* Tabs */}
           <div className="flex border-b border-border shrink-0">
             {([
               ['trade', 'Trade'],
-              ['positions', `Positions${account ? ` (${account.positions.length})` : ''}`],
+              ['positions', `Orders${account ? ` (${(account.positions?.length ?? 0) + (account.pendingOrders?.length ?? 0)})` : ''}`],
               ['history', 'History'],
+              ['funding', 'Wallet'],
             ] as const).map(([t, label]) => (
               <button key={t} onClick={() => setActiveTab(t)}
                 className={`flex-1 py-2.5 text-[9px] font-bold uppercase tracking-widest transition-colors border-b-2 -mb-px ${
@@ -796,25 +940,71 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
 
             {/* ── Trade Tab ── */}
             {activeTab === 'trade' && (
-              <TradePanel pair={selPair} prices={prices} balance={bal} onPlaced={loadAccount} />
+              <>
+                {alertMessage && (
+                  <div className="mx-3 mt-3 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20 text-[11px] text-amber-300 flex items-center justify-between gap-2">
+                    <span>{alertMessage}</span>
+                    <button onClick={() => setAlertMessage('')} className="text-amber-300/60 hover:text-amber-200">×</button>
+                  </div>
+                )}
+                <div className="mx-3 mt-3 p-2.5 rounded-lg border border-border/60 bg-[hsl(220_25%_8%)]">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Price Alert</span>
+                    <span className="text-[9px] text-muted-foreground/50">local alert</span>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <select value={alertDirection} onChange={e => setAlertDirection(e.target.value as 'above' | 'below')}
+                      className="h-8 bg-[hsl(220_25%_10%)] border border-border rounded px-1.5 text-[10px] text-foreground">
+                      <option value="above">Above</option><option value="below">Below</option>
+                    </select>
+                    <input value={alertTarget} onChange={e => setAlertTarget(e.target.value)} placeholder={prices[selPair] ? fmtPrice(prices[selPair].mid, prices[selPair].dec) : 'Price'}
+                      className="min-w-0 flex-1 h-8 bg-[hsl(220_25%_10%)] border border-border rounded px-2 text-xs font-mono text-foreground focus:outline-none focus:ring-1 focus:ring-primary/40" />
+                    <button onClick={() => setAlertMessage(alertTarget ? `Alert armed for ${selPair} ${alertDirection} ${alertTarget}.` : 'Enter a target price first.')}
+                      className="h-8 px-2 rounded bg-primary/15 border border-primary/30 text-primary text-[10px] font-semibold">Arm</button>
+                  </div>
+                </div>
+                <TradePanel pair={selPair} prices={prices} balance={bal} onPlaced={loadAccount} />
+              </>
             )}
 
             {/* ── Positions Tab ── */}
             {activeTab === 'positions' && (
               <div className="p-2 space-y-2">
-                {!account || account.positions.length === 0 ? (
+                {account?.pendingOrders?.map(order => (
+                  <div key={order.id} className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-3">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300">{order.orderType.toUpperCase()}</span>
+                        <span className="text-xs font-bold text-foreground">{order.action} {order.pair}</span>
+                      </div>
+                      <span className="text-[10px] text-blue-300">Pending</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 text-[10px] text-muted-foreground mb-2">
+                      <span>Trigger: <span className="font-mono text-foreground">{order.triggerPrice?.toFixed(5)}</span></span>
+                      <span>Lots: <span className="text-foreground">{order.lots}</span></span>
+                      <span>Now: <span className="font-mono text-foreground">{order.currentPrice.toFixed(5)}</span></span>
+                      <span>Leverage: <span className="text-foreground">1:{order.leverage}</span></span>
+                    </div>
+                    <button onClick={() => closePosition(order.id)} disabled={!!closing[order.id]}
+                      className="w-full py-1 text-[10px] border border-blue-500/30 text-blue-300 hover:bg-blue-500/10 rounded-md transition-colors disabled:opacity-40 font-semibold">
+                      {closing[order.id] ? 'Cancelling…' : 'Cancel Pending Order'}
+                    </button>
+                  </div>
+                ))}
+                {!account || ((account.positions?.length ?? 0) === 0 && (account.pendingOrders?.length ?? 0) === 0) ? (
                   <div className="flex flex-col items-center justify-center h-32 text-muted-foreground/50">
                     <svg className="w-8 h-8 mb-2 opacity-30" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                     <p className="text-xs">No open positions</p>
                     {bal <= 0 && <p className="text-[10px] mt-1 text-amber-400/70">Deposit to start trading</p>}
                   </div>
                 ) : (
-                  account.positions.map(pos => (
+                   account.positions.map(pos => (
                     <div key={pos.id} className="bg-[hsl(220_25%_8%)] border border-border/50 rounded-lg p-3">
                       <div className="flex items-center justify-between mb-2">
                         <div className="flex items-center gap-1.5">
                           <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${pos.action === 'BUY' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>{pos.action}</span>
-                          <span className="text-xs font-bold text-foreground">{pos.pair}</span>
+                           <span className="text-xs font-bold text-foreground">{pos.pair}</span>
+                          <span className="text-[9px] text-muted-foreground">1:{pos.leverage}</span>
                         </div>
                         <span className={`text-xs font-mono font-bold ${pnlCls(pos.pnl)}`}>{pnlStr(pos.pnl)}</span>
                       </div>
@@ -824,16 +1014,35 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
                         <span>Lots: <span className="text-foreground">{pos.lots}</span></span>
                         <span>Time: <span className="text-foreground">{new Date(pos.openedAt).toLocaleTimeString()}</span></span>
                       </div>
-                      {(pos.sl || pos.tp) && (
+                       <div className="flex gap-3 text-[10px] mb-1.5">
+                         <span className="text-muted-foreground">Type: <span className="text-foreground">{pos.orderType}</span></span>
+                         {pos.trailingStopPips && <span className="text-violet-300">Trail: {pos.trailingStopPips}p</span>}
+                       </div>
+                       {(pos.sl || pos.tp) && (
                         <div className="flex gap-3 text-[10px] mb-1.5">
                           {pos.sl && <span className="text-red-400/80">SL: <span className="font-mono text-red-300">{fmtPrice(pos.sl, pos.dec)}</span></span>}
                           {pos.tp && <span className="text-emerald-400/80">TP: <span className="font-mono text-emerald-300">{fmtPrice(pos.tp, pos.dec)}</span></span>}
                         </div>
                       )}
-                      <button onClick={() => closePosition(pos.id)} disabled={!!closing[pos.id]}
-                        className="w-full py-1 text-[10px] border border-red-900/40 text-red-400/70 hover:text-red-400 hover:border-red-700/50 hover:bg-red-900/10 rounded-md transition-colors disabled:opacity-40 font-semibold">
-                        {closing[pos.id] ? 'Closing…' : 'Close Position'}
-                      </button>
+                       {editing === pos.id && (
+                         <div className="grid grid-cols-3 gap-1.5 mb-2">
+                           <input value={editSl} onChange={e => setEditSl(e.target.value)} placeholder="SL" className="h-7 bg-surface border border-border rounded px-1.5 text-[10px] font-mono" />
+                           <input value={editTp} onChange={e => setEditTp(e.target.value)} placeholder="TP" className="h-7 bg-surface border border-border rounded px-1.5 text-[10px] font-mono" />
+                           <input value={editTrail} onChange={e => setEditTrail(e.target.value)} placeholder="Trail pips" className="h-7 bg-surface border border-border rounded px-1.5 text-[10px] font-mono" />
+                           <button onClick={() => saveEdit(pos.id)} className="col-span-2 py-1 rounded bg-primary/20 text-primary text-[10px] font-semibold">Save protection</button>
+                           <button onClick={() => setEditing(null)} className="py-1 rounded border border-border text-muted-foreground text-[10px]">Cancel</button>
+                         </div>
+                       )}
+                       <div className="flex gap-1.5 mb-1.5">
+                         <input value={partialLots[pos.id] ?? ''} onChange={e => setPartialLots(p => ({ ...p, [pos.id]: e.target.value }))} placeholder="Lots to close"
+                           className="min-w-0 flex-1 h-7 bg-surface border border-border rounded px-2 text-[10px] font-mono" />
+                         <button onClick={() => partialClose(pos.id)} className="px-2 rounded border border-amber-500/30 text-amber-300 text-[10px] hover:bg-amber-500/10">Partial</button>
+                         <button onClick={() => startEdit(pos)} className="px-2 rounded border border-primary/30 text-primary text-[10px] hover:bg-primary/10">Edit</button>
+                       </div>
+                       <button onClick={() => closePosition(pos.id)} disabled={!!closing[pos.id]}
+                         className="w-full py-1 text-[10px] border border-red-900/40 text-red-400/70 hover:text-red-400 hover:border-red-700/50 hover:bg-red-900/10 rounded-md transition-colors disabled:opacity-40 font-semibold">
+                         {closing[pos.id] ? 'Closing…' : 'Close Position'}
+                       </button>
                     </div>
                   ))
                 )}
@@ -866,6 +1075,55 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
                     </div>
                   ))
                 )}
+              </div>
+            )}
+
+            {/* ── Wallet / Funding Tab ── */}
+            {activeTab === 'funding' && (
+              <div className="p-3 space-y-3">
+                <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Trading balance</span>
+                    <span className="font-mono font-bold text-emerald-300">{fmt(bal)}</span>
+                  </div>
+                  <button onClick={() => setShowDep(true)} className="mt-2 w-full py-2 rounded-md bg-emerald-700/70 hover:bg-emerald-600 text-white text-[10px] font-bold">Deposit via verified M-Pesa</button>
+                </div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Deposit history</div>
+                {funding.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-muted-foreground/50">No funding requests yet</div>
+                ) : funding.map(record => (
+                  <div key={record.id} className="rounded-lg border border-border/50 bg-[hsl(220_25%_8%)] p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-sm text-foreground">KES {Number(record.amount).toLocaleString()}</span>
+                      <span className={`text-[9px] uppercase font-bold ${record.status === 'approved' ? 'text-emerald-400' : record.status === 'rejected' ? 'text-red-400' : 'text-amber-300'}`}>{record.status}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-[10px] text-muted-foreground">
+                      <span>{record.paymentMethod}</span>
+                      <span>{record.createdAt ? new Date(record.createdAt).toLocaleString() : '—'}</span>
+                    </div>
+                    <div className="mt-1 text-[9px] text-muted-foreground/60 break-all">{record.paymentReference}</div>
+                    {record.note && <div className="mt-1 text-[10px] text-amber-300/80">{record.note}</div>}
+                  </div>
+                ))}
+                <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground pt-2">Withdrawal history</div>
+                {withdrawals.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-muted-foreground/50">No withdrawal requests yet</div>
+                ) : withdrawals.map(record => (
+                  <div key={record.id} className="rounded-lg border border-border/50 bg-[hsl(220_25%_8%)] p-3">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-mono text-sm text-foreground">{fmt(record.amount)}</span>
+                      <span className={`text-[9px] uppercase font-bold ${record.status === 'approved' ? 'text-emerald-400' : record.status === 'rejected' ? 'text-red-400' : 'text-amber-300'}`}>{record.status}</span>
+                    </div>
+                    <div className="flex justify-between gap-2 text-[10px] text-muted-foreground">
+                      <span>{record.paymentMethod} · {record.accountDetails}</span>
+                      <span>{record.createdAt ? new Date(record.createdAt).toLocaleString() : '—'}</span>
+                    </div>
+                    {record.note && <div className="mt-1 text-[10px] text-amber-300/80">{record.note}</div>}
+                  </div>
+                ))}
+                <div className="text-[10px] leading-relaxed text-muted-foreground/60 border-t border-border/50 pt-3">
+                  M-Pesa deposits stay pending until the payment provider confirms them. The trading balance is an internal simulator ledger and does not represent custody of funds.
+                </div>
               </div>
             )}
           </div>

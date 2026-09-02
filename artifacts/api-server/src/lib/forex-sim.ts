@@ -110,7 +110,7 @@ function tick() {
         close:  cur,
         volume: Math.floor(Math.random() * 700) + 80,
       });
-      if (bars.length > 300) bars.shift();
+    if (bars.length > 10000) bars.shift();
     }
   }
 }
@@ -140,7 +140,7 @@ export function getPriceSnapshot(): Record<string, {
   return snap;
 }
 
-export function getCandleData(pairSlug: string, limit = 150): CandleBar[] {
+export function getCandleData(pairSlug: string, limit = 5000): CandleBar[] {
   tick();
   const pair = pairSlug.replace(/-/g, "/");
   return (_candles[pair] ?? []).slice(-limit);

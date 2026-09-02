@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { randomUUID, scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
-import { eq, count, sum, gt, desc } from "drizzle-orm";
+import { and, eq, count, sum, gt, desc } from "drizzle-orm";
 import {
   db, forexAccounts, forexPositions, forexClosedTrades,
   liveTraders, depositRequests, withdrawalRequests, companyWalletTransactions,
@@ -112,8 +112,7 @@ router.get("/admin/accounts", requireAdmin, async (req, res) => {
         const [tradeRow] = await db.select({ c: count(), pnl: sum(forexClosedTrades.pnl) })
           .from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid));
         const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades)
-          .where(eq(forexClosedTrades.sessionId, sid))
-          .where(gt(forexClosedTrades.pnl, 0));
+          .where(and(eq(forexClosedTrades.sessionId, sid), gt(forexClosedTrades.pnl, 0)));
 
         const totalTrades = Number(tradeRow?.c ?? 0);
         const netPnl      = parseFloat(Number(tradeRow?.pnl ?? 0).toFixed(2));
@@ -143,7 +142,7 @@ router.get("/admin/accounts", requireAdmin, async (req, res) => {
 // ── POST /api/admin/accounts/:id/reset ───────────────────────────────────────
 router.post("/admin/accounts/:id/reset", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const [acc] = await db.select().from(forexAccounts).where(eq(forexAccounts.id, id));
     if (!acc) return void res.status(404).json({ error: "Account not found" });
 
@@ -161,7 +160,7 @@ router.post("/admin/accounts/:id/reset", requireAdmin, async (req, res) => {
 // ── PATCH /api/admin/accounts/:id/balance ────────────────────────────────────
 router.patch("/admin/accounts/:id/balance", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const { balance } = req.body as { balance?: number };
     if (typeof balance !== "number" || balance < 0 || balance > 10_000_000) {
       return void res.status(400).json({ error: "balance must be 0–10,000,000" });
@@ -180,7 +179,7 @@ router.patch("/admin/accounts/:id/balance", requireAdmin, async (req, res) => {
 // ── DELETE /api/admin/accounts/:id ───────────────────────────────────────────
 router.delete("/admin/accounts/:id", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const [acc] = await db.select().from(forexAccounts).where(eq(forexAccounts.id, id));
     if (!acc) return void res.status(404).json({ error: "Account not found" });
 
@@ -203,8 +202,8 @@ router.get("/admin/live-traders", requireAdmin, async (req, res) => {
       const sid = `live-${t.id}`;
       const [posRow]   = await db.select({ c: count() }).from(forexPositions).where(eq(forexPositions.sessionId, sid));
       const [tradeRow] = await db.select({ c: count(), pnl: sum(forexClosedTrades.pnl) }).from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid));
-      const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades).where(eq(forexClosedTrades.sessionId, sid)).where(gt(forexClosedTrades.pnl, 0));
-      const [depRow]   = await db.select({ c: count() }).from(depositRequests).where(eq(depositRequests.sessionId, sid)).where(eq(depositRequests.status, "pending"));
+      const [winRow]   = await db.select({ c: count() }).from(forexClosedTrades).where(and(eq(forexClosedTrades.sessionId, sid), gt(forexClosedTrades.pnl, 0)));
+      const [depRow]   = await db.select({ c: count() }).from(depositRequests).where(and(eq(depositRequests.sessionId, sid), eq(depositRequests.status, "pending")));
       const totalTrades = Number(tradeRow?.c ?? 0);
       const wins        = Number(winRow?.c ?? 0);
       return {
@@ -231,7 +230,7 @@ router.get("/admin/live-traders", requireAdmin, async (req, res) => {
 // ── PATCH /api/admin/live-traders/:id/balance ─────────────────────────────────
 router.patch("/admin/live-traders/:id/balance", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const { balance } = req.body as { balance?: number };
     if (typeof balance !== "number" || balance < 0 || balance > 10_000_000) {
       return void res.status(400).json({ error: "balance must be 0–10,000,000" });
@@ -249,7 +248,7 @@ router.patch("/admin/live-traders/:id/balance", requireAdmin, async (req, res) =
 // ── PATCH /api/admin/live-traders/:id/suspend ─────────────────────────────────
 router.patch("/admin/live-traders/:id/suspend", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const { suspended } = req.body as { suspended?: boolean };
     if (typeof suspended !== "boolean") {
       return void res.status(400).json({ error: "suspended must be a boolean" });
@@ -267,7 +266,7 @@ router.patch("/admin/live-traders/:id/suspend", requireAdmin, async (req, res) =
 // ── POST /api/admin/live-traders/:id/close-all ────────────────────────────────
 router.post("/admin/live-traders/:id/close-all", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const sid = `live-${id}`;
     const prices = getPriceSnapshot();
 
@@ -276,8 +275,13 @@ router.post("/admin/live-traders/:id/close-all", requireAdmin, async (req, res) 
 
     let totalPnl = 0;
     for (const pos of positions) {
-      const cp  = prices[pos.pair] ?? pos.openPrice;
-      const pnl = calcPnl(pos.action, pos.lots, pos.openPrice, cp);
+      if (pos.status === "pending") {
+        await db.delete(forexPositions).where(eq(forexPositions.id, pos.id));
+        continue;
+      }
+      const pd = prices[pos.pair];
+      const cp = pd ? (pos.action === "BUY" ? pd.bid : pd.ask) : pos.openPrice;
+      const pnl = calcPnl(pos.pair, pos.action, pos.lots, pos.openPrice, cp);
       totalPnl += pnl;
       await db.insert(forexClosedTrades).values({
         sessionId:  sid,
@@ -287,6 +291,9 @@ router.post("/admin/live-traders/:id/close-all", requireAdmin, async (req, res) 
         openPrice:  pos.openPrice,
         closePrice: cp,
         pnl:        parseFloat(pnl.toFixed(2)),
+        commission: pos.commission,
+        swap:       pos.swap,
+        closeReason: "admin",
         openedAt:   pos.openedAt?.toISOString() ?? new Date().toISOString(),
       });
     }
@@ -309,7 +316,7 @@ router.post("/admin/live-traders/:id/close-all", requireAdmin, async (req, res) 
 // ── GET /api/admin/live-traders/:id/trades ────────────────────────────────────
 router.get("/admin/live-traders/:id/trades", requireAdmin, async (req, res) => {
   try {
-    const id  = parseInt(req.params.id, 10);
+    const id  = parseInt(String(req.params.id), 10);
     const sid = `live-${id}`;
     const trades = await db
       .select()
@@ -326,7 +333,7 @@ router.get("/admin/live-traders/:id/trades", requireAdmin, async (req, res) => {
 // ── DELETE /api/admin/live-traders/:id ────────────────────────────────────────
 router.delete("/admin/live-traders/:id", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const [trader] = await db.select().from(liveTraders).where(eq(liveTraders.id, id));
     if (!trader) return void res.status(404).json({ error: "Trader not found" });
     const sid = `live-${id}`;
@@ -376,7 +383,7 @@ router.post("/admin/live-traders", requireAdmin, async (req, res) => {
 // ── POST /api/admin/live-traders/:id/reset-password ───────────────────────────
 router.post("/admin/live-traders/:id/reset-password", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const { password } = req.body as { password?: string };
     if (!password || password.length < 6) {
       return void res.status(400).json({ error: "Password must be at least 6 characters." });
@@ -395,7 +402,7 @@ router.post("/admin/live-traders/:id/reset-password", requireAdmin, async (req, 
 // ── POST /api/admin/deposits/:id/reverse ─────────────────────────────────────
 router.post("/admin/deposits/:id/reverse", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
 
     const [dep] = await db.select().from(depositRequests).where(eq(depositRequests.id, id));
@@ -430,7 +437,7 @@ router.post("/admin/deposits/:id/reverse", requireAdmin, async (req, res) => {
 // destinationTraderId: required when destination === "trader"
 router.post("/admin/live-traders/:id/manual-deposit", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     if (isNaN(id)) return void res.status(400).json({ error: "Invalid id" });
 
     const { amount, note, destination, destinationTraderId } = req.body as {
@@ -569,7 +576,7 @@ router.get("/admin/withdrawals", requireAdmin, async (req, res) => {
 // ── POST /api/admin/withdrawals/:id/approve ───────────────────────────────────
 router.post("/admin/withdrawals/:id/approve", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const { note } = req.body as { note?: string };
     const [wr] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, id));
     if (!wr) return void res.status(404).json({ error: "Request not found" });
@@ -603,7 +610,7 @@ router.post("/admin/withdrawals/:id/approve", requireAdmin, async (req, res) => 
 // ── POST /api/admin/withdrawals/:id/reject ────────────────────────────────────
 router.post("/admin/withdrawals/:id/reject", requireAdmin, async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
+    const id = parseInt(String(req.params.id), 10);
     const { note } = req.body as { note?: string };
     const [wr] = await db.select().from(withdrawalRequests).where(eq(withdrawalRequests.id, id));
     if (!wr) return void res.status(404).json({ error: "Request not found" });

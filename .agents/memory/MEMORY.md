@@ -1,1 +1,2 @@
 - [IntaSend payment setup](intasend-setup.md) — IntaSend is configured with server-side Replit Secrets and needs a published webhook URL before live callbacks can arrive.
+- [Forex terminal safety boundaries](forex-terminal-safety.md) — simulated prices and internal ledger balances must remain visibly distinct from broker execution and verified custody.

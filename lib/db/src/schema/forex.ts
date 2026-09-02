@@ -14,12 +14,19 @@ export const forexPositions = pgTable("forex_positions", {
   sessionId: text("session_id").notNull(),
   pair: text("pair").notNull(),
   action: text("action").notNull(),
+  orderType: text("order_type").notNull().default("market"), // market | limit | stop
+  status: text("status").notNull().default("open"), // open | pending
   lots: real("lots").notNull(),
   openPrice: real("open_price").notNull(),
+  triggerPrice: real("trigger_price"),
   currentPrice: real("current_price").notNull(),
   pnl: real("pnl").notNull().default(0),
   sl: real("sl"),
   tp: real("tp"),
+  trailingStopPips: real("trailing_stop_pips"),
+  leverage: integer("leverage").notNull().default(100),
+  commission: real("commission").notNull().default(0),
+  swap: real("swap").notNull().default(0),
   openedAt: timestamp("opened_at").defaultNow(),
 });
 
@@ -32,6 +39,9 @@ export const forexClosedTrades = pgTable("forex_closed_trades", {
   openPrice: real("open_price").notNull(),
   closePrice: real("close_price").notNull(),
   pnl: real("pnl").notNull(),
+  commission: real("commission").notNull().default(0),
+  swap: real("swap").notNull().default(0),
+  closeReason: text("close_reason").notNull().default("manual"),
   openedAt: text("opened_at").notNull(),
   closedAt: timestamp("closed_at").defaultNow(),
 });

@@ -137,8 +137,12 @@ async function closePositionAtPrice(
   traderId: number,
   currentBalance: number,
   sid: string,
-  pos: { id: number; pair: string; action: string; lots: number; openPrice: number; openedAt: Date | null },
-  closePrice: number
+  pos: {
+    id: number; pair: string; action: string; lots: number; openPrice: number;
+    openedAt: Date | null; commission?: number; swap?: number;
+  },
+  closePrice: number,
+  closeReason = "manual",
 ): Promise<number> {
   const pnl = calcPnl(pos.pair, pos.action, pos.lots, pos.openPrice, closePrice);
   const newBalance = parseFloat((currentBalance + pnl).toFixed(2));
@@ -146,6 +150,9 @@ async function closePositionAtPrice(
   await db.insert(forexClosedTrades).values({
     sessionId: sid, pair: pos.pair, action: pos.action, lots: pos.lots,
     openPrice: pos.openPrice, closePrice, pnl,
+    commission: pos.commission ?? 0,
+    swap: pos.swap ?? 0,
+    closeReason,
     openedAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
   });
   await db.update(liveTraders).set({ balance: newBalance }).where(eq(liveTraders.id, traderId));
@@ -163,22 +170,71 @@ router.get("/live/account", requireLive, async (req, res) => {
 
     let runningBalance = trader.balance;
     let floatingPnl = 0;
+    const pendingOrders: Array<{
+      id: number; pair: string; action: string; lots: number;
+      orderType: string; triggerPrice: number | null; sl: number | null;
+      tp: number | null; trailingStopPips: number | null; leverage: number;
+      currentPrice: number; createdAt: string;
+    }> = [];
     const openPositions: Array<{
       id: number; pair: string; action: string; lots: number;
       openPrice: number; currentPrice: number; pnl: number;
       sl: number | null; tp: number | null;
-      openedAt: string; dec: number;
+      trailingStopPips: number | null; leverage: number;
+      commission: number; swap: number; openedAt: string; dec: number;
     }> = [];
 
     for (const pos of dbPositions) {
       const pd  = snap[pos.pair];
-      const cur = pd ? (pos.action === "BUY" ? pd.bid : pd.ask) : pos.currentPrice;
-      const pnl = calcPnl(pos.pair, pos.action, pos.lots, pos.openPrice, cur);
+      if (!pd) continue;
+
+      const marketMid = pd.mid;
+      const trigger = pos.triggerPrice ?? pos.openPrice;
+      const isPending = pos.status === "pending";
+      const triggered = !isPending || (
+        pos.orderType === "limit"
+          ? (pos.action === "BUY" ? marketMid <= trigger : marketMid >= trigger)
+          : (pos.action === "BUY" ? marketMid >= trigger : marketMid <= trigger)
+      );
+
+      if (isPending && !triggered) {
+        pendingOrders.push({
+          id: pos.id, pair: pos.pair, action: pos.action, lots: pos.lots,
+          orderType: pos.orderType, triggerPrice: pos.triggerPrice,
+          sl: pos.sl ?? null, tp: pos.tp ?? null,
+          trailingStopPips: pos.trailingStopPips ?? null,
+          leverage: pos.leverage, currentPrice: marketMid,
+          createdAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
+        });
+        continue;
+      }
+
+      const cur = pos.action === "BUY" ? pd.bid : pd.ask;
+      if (isPending) {
+        await db.update(forexPositions).set({
+          status: "open", openPrice: cur, currentPrice: cur,
+        }).where(eq(forexPositions.id, pos.id));
+      }
+      const activePos = isPending ? { ...pos, openPrice: cur, currentPrice: cur, status: "open" } : pos;
+
+      let activeSl = pos.sl;
+      if (pos.trailingStopPips != null && pos.trailingStopPips > 0) {
+        const trailing = pos.action === "BUY"
+          ? cur - pos.trailingStopPips * pd.pip
+          : cur + pos.trailingStopPips * pd.pip;
+        activeSl = activeSl == null
+          ? trailing
+          : pos.action === "BUY" ? Math.max(activeSl, trailing) : Math.min(activeSl, trailing);
+        if (activeSl !== pos.sl) {
+          await db.update(forexPositions).set({ sl: activeSl }).where(eq(forexPositions.id, pos.id));
+        }
+      }
+      const pnl = calcPnl(activePos.pair, activePos.action, activePos.lots, activePos.openPrice, cur);
 
       // ── SL trigger ──
-      const slHit = pos.sl != null && (
-        (pos.action === "BUY"  && cur <= pos.sl) ||
-        (pos.action === "SELL" && cur >= pos.sl)
+      const slHit = activeSl != null && (
+        (pos.action === "BUY"  && cur <= activeSl) ||
+        (pos.action === "SELL" && cur >= activeSl)
       );
       // ── TP trigger ──
       const tpHit = pos.tp != null && (
@@ -188,7 +244,9 @@ router.get("/live/account", requireLive, async (req, res) => {
 
       if (slHit || tpHit) {
         // Close at current market price (SL/TP fill)
-        runningBalance = await closePositionAtPrice(trader.id, runningBalance, sid, pos, cur);
+        runningBalance = await closePositionAtPrice(
+          trader.id, runningBalance, sid, activePos, cur, slHit ? "stop_loss" : "take_profit",
+        );
         req.log.info({ posId: pos.id, pair: pos.pair, reason: slHit ? "SL" : "TP", closePrice: cur }, "SL/TP triggered");
         continue; // position is closed; exclude from open list
       }
@@ -198,15 +256,17 @@ router.get("/live/account", requireLive, async (req, res) => {
       floatingPnl += pnl;
       openPositions.push({
         id: pos.id, pair: pos.pair, action: pos.action, lots: pos.lots,
-        openPrice: pos.openPrice, currentPrice: cur, pnl,
-        sl: pos.sl ?? null, tp: pos.tp ?? null,
+        openPrice: activePos.openPrice, currentPrice: cur, pnl,
+        sl: activeSl ?? null, tp: pos.tp ?? null,
+        trailingStopPips: pos.trailingStopPips ?? null,
+        leverage: pos.leverage, commission: pos.commission, swap: pos.swap,
         openedAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
-        dec: pd?.dec ?? 5,
+        dec: pd.dec,
       });
     }
 
     const equity      = parseFloat((runningBalance + floatingPnl).toFixed(2));
-    const marginUsed  = openPositions.reduce((s, p) => s + p.lots * 1000, 0);
+    const marginUsed  = openPositions.reduce((s, p) => s + (p.lots * 100_000) / Math.max(1, p.leverage), 0);
     const freeMargin  = parseFloat((equity - marginUsed).toFixed(2));
     const marginLevel = marginUsed > 0 ? parseFloat((equity / marginUsed * 100).toFixed(1)) : 0;
 
@@ -224,6 +284,8 @@ router.get("/live/account", requireLive, async (req, res) => {
       winRate: total > 0 ? parseFloat((wins / total * 100).toFixed(1)) : 0,
       realizedPnl: parseFloat(Number(pnlRow?.total ?? 0).toFixed(2)),
       positions: openPositions,
+      pendingOrders,
+      marketData: { source: "simulated", status: "practice-only" },
     });
   } catch (err) {
     req.log.error({ err }, "live/account error");
@@ -237,8 +299,9 @@ router.post("/live/orders", requireLive, async (req, res) => {
     const trader = (req as any).liveTrader as { id: number; balance: number };
     const sid = liveSessionId(trader.id);
 
-    const { pair, action, lots, sl, tp } = req.body as {
+    const { pair, action, lots, sl, tp, orderType = "market", triggerPrice, trailingStopPips, leverage = 100 } = req.body as {
       pair: string; action: string; lots: number; sl?: number | null; tp?: number | null;
+      orderType?: string; triggerPrice?: number | null; trailingStopPips?: number | null; leverage?: number;
     };
 
     if (!pair || !action || !lots) return void res.status(400).json({ error: "pair, action, lots required" });
@@ -246,31 +309,61 @@ router.post("/live/orders", requireLive, async (req, res) => {
     if (!["BUY", "SELL"].includes(action)) return void res.status(400).json({ error: "action must be BUY or SELL" });
     if (lots < 0.01 || lots > 100) return void res.status(400).json({ error: "lots must be 0.01–100" });
     if (trader.balance <= 0) return void res.status(400).json({ error: "Insufficient balance. Please make a deposit." });
+    if (!["market", "limit", "stop"].includes(orderType)) {
+      return void res.status(400).json({ error: "orderType must be market, limit, or stop" });
+    }
+    if (![25, 50, 100, 200].includes(Number(leverage))) {
+      return void res.status(400).json({ error: "Leverage must be 1:25, 1:50, 1:100, or 1:200" });
+    }
 
     const snap  = getPriceSnapshot();
     const pd    = snap[pair];
-    const price = action === "BUY" ? pd.ask : pd.bid;
+    const marketPrice = action === "BUY" ? pd.ask : pd.bid;
+    const requestedTrigger = triggerPrice == null ? null : Number(triggerPrice);
+    const price = orderType === "market" ? marketPrice : requestedTrigger;
+    if (orderType !== "market" && (!requestedTrigger || !isFinite(requestedTrigger) || requestedTrigger <= 0)) {
+      return void res.status(400).json({ error: "A valid trigger price is required for pending orders." });
+    }
+    if (orderType === "limit" && (
+      (action === "BUY" && requestedTrigger! >= marketPrice) ||
+      (action === "SELL" && requestedTrigger! <= marketPrice)
+    )) {
+      return void res.status(400).json({ error: "Limit orders must be placed away from the current market price." });
+    }
+    if (orderType === "stop" && (
+      (action === "BUY" && requestedTrigger! <= marketPrice) ||
+      (action === "SELL" && requestedTrigger! >= marketPrice)
+    )) {
+      return void res.status(400).json({ error: "Stop orders must be placed beyond the current market price." });
+    }
+    const referencePrice = price!;
 
     // ── SL/TP validation ──────────────────────────────────────────────────────
     if (sl != null) {
       if (!isFinite(sl) || sl <= 0) return void res.status(400).json({ error: "Stop Loss must be a positive finite number." });
       // For a BUY, SL must be below the entry price; for SELL, above.
-      if (action === "BUY"  && sl >= price) return void res.status(400).json({ error: `Stop Loss (${sl}) must be below the entry price (${price.toFixed(pd.dec)}) for a BUY order.` });
-      if (action === "SELL" && sl <= price) return void res.status(400).json({ error: `Stop Loss (${sl}) must be above the entry price (${price.toFixed(pd.dec)}) for a SELL order.` });
+      if (action === "BUY"  && sl >= referencePrice) return void res.status(400).json({ error: `Stop Loss (${sl}) must be below the entry price (${referencePrice.toFixed(pd.dec)}) for a BUY order.` });
+      if (action === "SELL" && sl <= referencePrice) return void res.status(400).json({ error: `Stop Loss (${sl}) must be above the entry price (${referencePrice.toFixed(pd.dec)}) for a SELL order.` });
     }
     if (tp != null) {
       if (!isFinite(tp) || tp <= 0) return void res.status(400).json({ error: "Take Profit must be a positive finite number." });
       // For a BUY, TP must be above the entry price; for SELL, below.
-      if (action === "BUY"  && tp <= price) return void res.status(400).json({ error: `Take Profit (${tp}) must be above the entry price (${price.toFixed(pd.dec)}) for a BUY order.` });
-      if (action === "SELL" && tp >= price) return void res.status(400).json({ error: `Take Profit (${tp}) must be below the entry price (${price.toFixed(pd.dec)}) for a SELL order.` });
+      if (action === "BUY"  && tp <= referencePrice) return void res.status(400).json({ error: `Take Profit (${tp}) must be above the entry price (${referencePrice.toFixed(pd.dec)}) for a BUY order.` });
+      if (action === "SELL" && tp >= referencePrice) return void res.status(400).json({ error: `Take Profit (${tp}) must be below the entry price (${referencePrice.toFixed(pd.dec)}) for a SELL order.` });
+    }
+    if (trailingStopPips != null && (!isFinite(trailingStopPips) || trailingStopPips <= 0)) {
+      return void res.status(400).json({ error: "Trailing stop must be a positive number of pips." });
     }
 
     await db.insert(forexPositions).values({
-      sessionId: sid, pair, action, lots, openPrice: price, currentPrice: price, pnl: 0,
-      sl: sl ?? null, tp: tp ?? null,
+      sessionId: sid, pair, action, lots, orderType,
+      status: orderType === "market" ? "open" : "pending",
+      openPrice: price!, triggerPrice: requestedTrigger, currentPrice: marketPrice, pnl: 0,
+      sl: sl ?? null, tp: tp ?? null, trailingStopPips: trailingStopPips ?? null,
+      leverage: Number(leverage), commission: 0, swap: 0,
     });
 
-    return void res.status(201).json({ ok: true, price, pair, action, lots });
+    return void res.status(201).json({ ok: true, status: orderType === "market" ? "open" : "pending", price, pair, action, lots });
   } catch (err) {
     req.log.error({ err }, "live/orders error");
     return void res.status(500).json({ error: "Failed" });
@@ -282,11 +375,15 @@ router.delete("/live/positions/:id", requireLive, async (req, res) => {
   try {
     const trader = (req as any).liveTrader as { id: number; balance: number };
     const sid = liveSessionId(trader.id);
-    const id  = parseInt(req.params.id, 10);
+    const id  = parseInt(String(req.params.id), 10);
 
     const [pos] = await db.select().from(forexPositions)
       .where(and(eq(forexPositions.id, id), eq(forexPositions.sessionId, sid)));
     if (!pos) return void res.status(404).json({ error: "Position not found" });
+    if (pos.status === "pending") {
+      await db.delete(forexPositions).where(eq(forexPositions.id, id));
+      return void res.json({ ok: true, cancelled: true });
+    }
 
     const snap = getPriceSnapshot();
     const pd   = snap[pos.pair];
@@ -298,6 +395,9 @@ router.delete("/live/positions/:id", requireLive, async (req, res) => {
     await db.insert(forexClosedTrades).values({
       sessionId: sid, pair: pos.pair, action: pos.action, lots: pos.lots,
       openPrice: pos.openPrice, closePrice: cur, pnl,
+      commission: pos.commission,
+      swap: pos.swap,
+      closeReason: "manual",
       openedAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
     });
     await db.update(liveTraders).set({ balance: newBalance }).where(eq(liveTraders.id, trader.id));
@@ -306,6 +406,75 @@ router.delete("/live/positions/:id", requireLive, async (req, res) => {
   } catch (err) {
     req.log.error({ err }, "live/positions delete error");
     return void res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── PATCH /api/live/positions/:id ─────────────────────────────────────────────
+router.patch("/live/positions/:id", requireLive, async (req, res) => {
+  try {
+    const trader = (req as any).liveTrader as { id: number };
+    const sid = liveSessionId(trader.id);
+    const id = parseInt(String(req.params.id), 10);
+    const [pos] = await db.select().from(forexPositions)
+      .where(and(eq(forexPositions.id, id), eq(forexPositions.sessionId, sid)));
+    if (!pos) return void res.status(404).json({ error: "Position not found" });
+    if (pos.status !== "open") return void res.status(400).json({ error: "Pending orders can only be cancelled." });
+
+    const snap = getPriceSnapshot();
+    const pd = snap[pos.pair];
+    const current = pos.action === "BUY" ? pd.bid : pd.ask;
+    const body = req.body as { sl?: number | null; tp?: number | null; trailingStopPips?: number | null };
+    const nextSl = body.sl === undefined ? pos.sl : body.sl;
+    const nextTp = body.tp === undefined ? pos.tp : body.tp;
+    const nextTrailing = body.trailingStopPips === undefined ? pos.trailingStopPips : body.trailingStopPips;
+    if (nextSl != null && (!isFinite(nextSl) || nextSl <= 0 || (pos.action === "BUY" ? nextSl >= current : nextSl <= current))) {
+      return void res.status(400).json({ error: "Stop Loss is invalid for the current market price." });
+    }
+    if (nextTp != null && (!isFinite(nextTp) || nextTp <= 0 || (pos.action === "BUY" ? nextTp <= current : nextTp >= current))) {
+      return void res.status(400).json({ error: "Take Profit is invalid for the current market price." });
+    }
+    if (nextTrailing != null && (!isFinite(nextTrailing) || nextTrailing <= 0)) {
+      return void res.status(400).json({ error: "Trailing stop must be a positive number of pips." });
+    }
+    await db.update(forexPositions).set({
+      sl: nextSl ?? null, tp: nextTp ?? null, trailingStopPips: nextTrailing ?? null,
+    }).where(eq(forexPositions.id, id));
+    return void res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "live/positions patch error");
+    return void res.status(500).json({ error: "Failed to update position." });
+  }
+});
+
+// ── POST /api/live/positions/:id/partial-close ───────────────────────────────
+router.post("/live/positions/:id/partial-close", requireLive, async (req, res) => {
+  try {
+    const trader = (req as any).liveTrader as { id: number; balance: number };
+    const sid = liveSessionId(trader.id);
+    const id = parseInt(String(req.params.id), 10);
+    const [pos] = await db.select().from(forexPositions)
+      .where(and(eq(forexPositions.id, id), eq(forexPositions.sessionId, sid)));
+    if (!pos || pos.status !== "open") return void res.status(404).json({ error: "Open position not found" });
+    const amount = Number((req.body as { lots?: number }).lots);
+    if (!isFinite(amount) || amount < 0.01 || amount >= pos.lots) {
+      return void res.status(400).json({ error: `Enter between 0.01 and ${(pos.lots - 0.01).toFixed(2)} lots.` });
+    }
+    const snap = getPriceSnapshot();
+    const pd = snap[pos.pair];
+    const closePrice = pos.action === "BUY" ? pd.bid : pd.ask;
+    const pnl = calcPnl(pos.pair, pos.action, amount, pos.openPrice, closePrice);
+    await db.update(forexPositions).set({ lots: parseFloat((pos.lots - amount).toFixed(2)) }).where(eq(forexPositions.id, id));
+    await db.insert(forexClosedTrades).values({
+      sessionId: sid, pair: pos.pair, action: pos.action, lots: amount,
+      openPrice: pos.openPrice, closePrice, pnl,
+      commission: 0, swap: 0, closeReason: "partial",
+      openedAt: pos.openedAt?.toISOString() ?? new Date().toISOString(),
+    });
+    await db.update(liveTraders).set({ balance: parseFloat((trader.balance + pnl).toFixed(2)) }).where(eq(liveTraders.id, trader.id));
+    return void res.json({ ok: true, pnl: parseFloat(pnl.toFixed(2)) });
+  } catch (err) {
+    req.log.error({ err }, "live/positions partial close error");
+    return void res.status(500).json({ error: "Failed to partially close position." });
   }
 });
 
@@ -320,6 +489,20 @@ router.get("/live/history", requireLive, async (req, res) => {
     return void res.json(rows);
   } catch (err) {
     req.log.error({ err }, "live/history error");
+    return void res.status(500).json({ error: "Failed" });
+  }
+});
+
+// ── GET /api/live/deposits ────────────────────────────────────────────────────
+router.get("/live/deposits", requireLive, async (req, res) => {
+  try {
+    const trader = (req as any).liveTrader as { id: number };
+    const rows = await db.select().from(depositRequests)
+      .where(eq(depositRequests.sessionId, liveSessionId(trader.id)))
+      .orderBy(desc(depositRequests.createdAt));
+    return void res.json(rows);
+  } catch (err) {
+    req.log.error({ err }, "live/deposits error");
     return void res.status(500).json({ error: "Failed" });
   }
 });
@@ -339,77 +522,50 @@ router.post("/live/deposit", requireLive, async (req, res) => {
       return void res.status(400).json({ error: "Enter a valid amount (1 – 1,000,000)." });
     }
 
-    if (paymentMethod.trim().toLowerCase() === "m-pesa") {
-      if (!isIntaSendConfigured()) {
-        return void res.status(503).json({
-          error: "M-Pesa deposits are not configured yet. Please contact support.",
-        });
-      }
-      const normalizedPhone = normalizeKenyanPhone(phoneNumber ?? contact ?? "");
-      if (!normalizedPhone) {
-        return void res.status(400).json({
-          error: "Enter a valid Kenyan M-Pesa number, such as 0712345678.",
-        });
-      }
-
-      const apiRef = `trader-${trader.id}-deposit-${randomUUID()}`;
-      const stk = await initiateMpesaStkPush({
-        amount: amt,
-        phoneNumber: normalizedPhone,
-        apiRef,
-      });
-      const providerTransactionId = getProviderTransactionId(stk);
-
-      await db.insert(depositRequests).values({
-        sessionId: liveSessionId(trader.id),
-        traderName: trader.fullName,
-        contact: normalizedPhone,
-        amount: amt,
-        paymentMethod: "M-Pesa",
-        paymentReference: apiRef,
-        paymentProvider: "intasend",
-        providerTransactionId,
-        status: "pending",
-      });
-
-      return void res.status(202).json({
-        ok: true,
-        status: "pending",
-        message: `Approve the M-Pesa prompt sent to ${normalizedPhone}. Your balance will update automatically after payment confirmation.`,
-        reference: apiRef,
+    if (paymentMethod.trim().toLowerCase() !== "m-pesa") {
+      return void res.status(422).json({
+        error: "This funding method is not available yet. Deposits currently use verified M-Pesa STK Push only.",
       });
     }
 
-    if (!paymentReference?.trim()) {
-      return void res.status(400).json({ error: "Payment reference is required." });
+    if (!isIntaSendConfigured()) {
+      return void res.status(503).json({
+        error: "M-Pesa deposits are not configured yet. Please contact support.",
+      });
     }
 
-    // Auto-approve: credit balance immediately and record as approved
-    const [current] = await db
-      .select({ balance: liveTraders.balance })
-      .from(liveTraders)
-      .where(eq(liveTraders.id, trader.id));
+    const normalizedPhone = normalizeKenyanPhone(phoneNumber ?? contact ?? "");
+    if (!normalizedPhone) {
+      return void res.status(400).json({
+        error: "Enter a valid Kenyan M-Pesa number, such as 0712345678.",
+      });
+    }
 
-    await db
-      .update(liveTraders)
-      .set({ balance: parseFloat(((current?.balance ?? 0) + amt).toFixed(2)) })
-      .where(eq(liveTraders.id, trader.id));
+    const apiRef = `trader-${trader.id}-deposit-${randomUUID()}`;
+    const stk = await initiateMpesaStkPush({
+      amount: amt,
+      phoneNumber: normalizedPhone,
+      apiRef,
+    });
+    const providerTransactionId = getProviderTransactionId(stk);
 
     await db.insert(depositRequests).values({
       sessionId: liveSessionId(trader.id),
       traderName: trader.fullName,
-      contact: contact?.trim() || trader.email,
+      contact: normalizedPhone,
       amount: amt,
-      paymentMethod: paymentMethod.trim(),
-      paymentReference: paymentReference.trim(),
-      status: "approved",
-      reviewedAt: new Date(),
+      paymentMethod: "M-Pesa",
+      paymentReference: apiRef,
+      paymentProvider: "intasend",
+      providerTransactionId,
+      status: "pending",
     });
 
-    return void res.status(201).json({
+    return void res.status(202).json({
       ok: true,
-      newBalance: parseFloat(((current?.balance ?? 0) + amt).toFixed(2)),
-      message: `$${amt.toLocaleString("en-US", { minimumFractionDigits: 2 })} has been credited to your account.`,
+      status: "pending",
+      message: `Approve the M-Pesa prompt sent to ${normalizedPhone}. Your trading balance will update automatically after payment confirmation.`,
+      reference: apiRef,
     });
   } catch (err) {
     req.log.error({ err }, "live/deposit error");
@@ -429,6 +585,11 @@ router.post("/live/withdraw", requireLive, async (req, res) => {
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) {
       return void res.status(400).json({ error: "Enter a valid withdrawal amount." });
+    }
+    if (paymentMethod.trim().toLowerCase() !== "m-pesa") {
+      return void res.status(422).json({
+        error: "This withdrawal method is not available yet. Withdrawals currently use M-Pesa only.",
+      });
     }
     if (amt > trader.balance) {
       return void res.status(400).json({ error: `Insufficient balance. Your balance is $${trader.balance.toFixed(2)}.` });
