@@ -566,21 +566,45 @@ function AdminHub({ onDashboard, onRealAccount, onLogout }: {
 }) {
   return (
     <div className="min-h-screen flex flex-col bg-background">
-      <header className="flex items-center justify-between px-6 h-14 border-b border-border bg-panel">
-        <Logo size="sm" />
-        <div className="flex items-center gap-4">
-          <span className="text-[11px] text-muted-foreground/60 uppercase tracking-widest font-semibold">Owner Portal</span>
-          <div className="w-px h-4 bg-border" />
+      <header className="relative flex items-center justify-between px-4 sm:px-6 h-[72px] border-b border-emerald-500/15 bg-panel overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_10%_0%,rgba(16,185,129,0.1),transparent_34%)]" />
+        <div className="relative flex items-center gap-4">
+          <Logo size="sm" />
+          <div className="hidden sm:block w-px h-7 bg-border" />
+          <div className="hidden sm:block">
+            <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-400">Owner portal</div>
+            <div className="text-[9px] text-muted-foreground/60 mt-1">Private workspace</div>
+          </div>
+        </div>
+        <div className="relative flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2">
+            <div className="w-9 h-9 rounded-full overflow-hidden border border-emerald-400/50 bg-emerald-500/10">
+              <img src="/owner-profile.jpeg" alt="Owner profile" className="w-full h-full object-cover" />
+            </div>
+            <div className="leading-none">
+              <div className="text-xs font-bold text-foreground">Owner account</div>
+              <div className="text-[9px] text-emerald-400/80 uppercase tracking-widest mt-1">Secure session</div>
+            </div>
+          </div>
+          <div className="w-px h-5 bg-border" />
           <button onClick={onLogout} className="text-xs text-muted-foreground hover:text-foreground transition-colors">Sign Out</button>
         </div>
       </header>
 
       <div className="flex flex-1 items-center justify-center p-8">
         <div className="w-full max-w-2xl">
-          <div className="mb-10">
-            <p className="text-[11px] text-blue-400/80 uppercase tracking-widest font-semibold mb-2">Owner Portal</p>
-            <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
-            <p className="text-muted-foreground text-sm mt-1">Select your workspace below</p>
+          <div className="flex items-center gap-4 mb-10">
+            <div className="relative shrink-0">
+              <div className="w-16 h-16 rounded-2xl overflow-hidden border-2 border-emerald-400/50 bg-emerald-500/10 shadow-xl shadow-emerald-950/30">
+                <img src="/owner-profile.jpeg" alt="Owner profile" className="w-full h-full object-cover" />
+              </div>
+              <span className="absolute -right-1 -bottom-1 w-4 h-4 rounded-full bg-emerald-400 border-4 border-background" />
+            </div>
+            <div>
+              <p className="text-[11px] text-blue-400/80 uppercase tracking-widest font-semibold mb-2">Owner workspace</p>
+              <h1 className="text-2xl font-bold text-foreground">Welcome back</h1>
+              <p className="text-muted-foreground text-sm mt-1">Select your workspace below</p>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-5">
