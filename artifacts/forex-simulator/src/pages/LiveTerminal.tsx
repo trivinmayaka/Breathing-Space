@@ -52,6 +52,7 @@ const PAIRS = [
   'XAU/USD','XAG/USD','USOIL','BTC/USD','ETH/USD',
 ];
 const INSTRUMENT_GROUPS = ['All', 'Major', 'Minor', 'Cross', 'Commodity', 'Crypto'] as const;
+const ETHEREUM_DEPOSIT_ADDRESS = '0x782a23023afbd0c1f6d98039a81af0fc10b8e2ae';
 
 // ─── Payment methods config ───────────────────────────────────────────────────
 const DEPOSIT_METHODS = [
@@ -100,9 +101,12 @@ const DEPOSIT_METHODS = [
     label: 'Crypto',
     icon: <span className="text-lg font-black">₿</span>,
     color: 'amber',
-    instructions: [],
-    hint: 'Unavailable until a verified custody and wallet workflow is configured.',
-    disabled: true,
+    instructions: [
+      { label: 'Network', value: 'Ethereum mainnet / ERC20 address' },
+      { label: 'Wallet', value: ETHEREUM_DEPOSIT_ADDRESS },
+    ],
+    hint: 'Send ETH on Ethereum mainnet only. Submit the on-chain transaction hash afterward. Crypto deposits remain pending until an admin verifies the transaction; wrong-network transfers may be unrecoverable.',
+    disabled: false,
   },
   {
     id: 'western',
@@ -219,7 +223,7 @@ function DepositModal({ onClose }: { onClose: () => void }) {
               );
             })}
             <div className="col-span-3 text-[11px] text-center text-muted-foreground/60 pt-1">
-              M-Pesa STK Push is the only selectable method. Other methods are shown for visibility but remain disabled until verified.
+              M-Pesa STK Push and Ethereum crypto manual review are available. Other methods remain disabled until verified.
             </div>
             <div className="col-span-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
               <div className="font-bold uppercase tracking-wider text-amber-300">Funding review policy</div>
@@ -252,16 +256,33 @@ function DepositModal({ onClose }: { onClose: () => void }) {
                  placeholder="e.g. 1,000"
                 className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
             </div>
-            <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-                 M-Pesa Phone Number
-              </label>
-               <input required type="tel" inputMode="tel"
-                value={contact} onChange={e => { setContact(e.target.value); setErr(''); }}
-                 placeholder="e.g. 0712345678"
-                className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
-            </div>
-             <p className="text-[10px] text-muted-foreground/60">Your balance remains pending until IntaSend confirms the payment. Do not send funds to unverified payment details.</p>
+             {method.id === 'mpesa' ? (
+               <div>
+                 <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    M-Pesa Phone Number
+                 </label>
+                  <input required type="tel" inputMode="tel"
+                   value={contact} onChange={e => { setContact(e.target.value); setErr(''); }}
+                    placeholder="e.g. 0712345678"
+                   className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-emerald-500/50 focus:border-emerald-500/60 transition-all" />
+               </div>
+             ) : (
+               <div>
+                 <label className="block text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                    Ethereum Transaction Hash
+                 </label>
+                 <input required type="text" inputMode="text"
+                   value={ref} onChange={e => { setRef(e.target.value); setErr(''); }}
+                   placeholder="0x…"
+                   pattern="0x[a-fA-F0-9]{64}"
+                   className="w-full h-10 bg-[hsl(220_25%_10%)] border border-border rounded-lg px-3 text-sm text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-amber-500/50 focus:border-amber-500/60 transition-all" />
+               </div>
+             )}
+             <p className="text-[10px] text-muted-foreground/60">
+               {method.id === 'mpesa'
+                 ? 'Your balance remains pending until IntaSend confirms the payment. Do not send funds to unverified payment details.'
+                 : 'The amount is recorded as a KES equivalent for review. No balance is credited from the transaction hash alone.'}
+             </p>
             {err && <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</div>}
             <button type="submit" disabled={loading}
               className={`w-full h-11 disabled:opacity-60 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-2 ${btnMap[method.color] ?? btnMap.emerald}`}>
@@ -277,12 +298,14 @@ function DepositModal({ onClose }: { onClose: () => void }) {
             <div className="w-16 h-16 rounded-full bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
               <svg className="w-8 h-8 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5"/></svg>
             </div>
-               <p className="text-base font-bold text-foreground">{paymentPending ? 'Payment Prompt Sent' : 'Deposit Successful!'}</p>
+                <p className="text-base font-bold text-foreground">
+                  {paymentPending && method?.id === 'mpesa' ? 'Payment Prompt Sent' : 'Deposit Submitted'}
+                </p>
             <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-xl px-5 py-3 w-full">
               <p className="text-sm text-emerald-300 font-semibold">{credited}</p>
             </div>
              <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
-                {paymentPending
+                {paymentPending && method?.id === 'mpesa'
                   ? 'Approve the prompt on your phone. Your trading balance will update automatically once IntaSend confirms the payment.'
                   : 'Your request is recorded and remains subject to payment verification and account review.'}
              </p>

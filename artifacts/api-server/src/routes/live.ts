@@ -18,6 +18,7 @@ import type { Request, Response, NextFunction } from "express";
 
 const scryptAsync = promisify(scrypt);
 const router = Router();
+const ETHEREUM_TX_HASH = /^0x[a-fA-F0-9]{64}$/;
 
 // ── Password helpers ──────────────────────────────────────────────────────────
 async function hashPassword(password: string): Promise<string> {
@@ -525,9 +526,49 @@ router.post("/live/deposit", requireLive, async (req, res) => {
       return void res.status(400).json({ error: "Enter a valid amount (1 – 1,000,000)." });
     }
 
-    if (paymentMethod.trim().toLowerCase() !== "m-pesa") {
+    const normalizedMethod = paymentMethod.trim().toLowerCase();
+
+    if (normalizedMethod === "crypto") {
+      const txHash = paymentReference?.trim() ?? "";
+      if (!ETHEREUM_TX_HASH.test(txHash)) {
+        return void res.status(400).json({
+          error: "Enter a valid Ethereum transaction hash beginning with 0x.",
+        });
+      }
+
+      const [duplicate] = await db
+        .select({ id: depositRequests.id, status: depositRequests.status })
+        .from(depositRequests)
+        .where(eq(depositRequests.paymentReference, txHash))
+        .limit(1);
+      if (duplicate) {
+        return void res.status(409).json({
+          error: `This transaction has already been submitted with status ${duplicate.status}.`,
+        });
+      }
+
+      await db.insert(depositRequests).values({
+        sessionId: liveSessionId(trader.id),
+        traderName: trader.fullName,
+        contact: contact?.trim() || "Ethereum wallet",
+        amount: amt,
+        paymentMethod: "Crypto (Ethereum / ERC20)",
+        paymentReference: txHash,
+        paymentProvider: "manual-crypto",
+        status: "pending",
+      });
+
+      return void res.status(202).json({
+        ok: true,
+        status: "pending",
+        message: "Ethereum deposit submitted for manual verification. Your trading balance will not change until an admin confirms the transaction.",
+        reference: txHash,
+      });
+    }
+
+    if (normalizedMethod !== "m-pesa") {
       return void res.status(422).json({
-        error: "This funding method is not available yet. Deposits currently use verified M-Pesa STK Push only.",
+        error: "This funding method is not available yet. Deposits currently use verified M-Pesa or manual Ethereum review.",
       });
     }
 
