@@ -220,21 +220,33 @@ export function ChartArea({ selectedPair, maxLots = 10 }: ChartAreaProps) {
     };
     chart.subscribeCrosshairMove(onCrosshairMove);
 
-    const ro = new ResizeObserver(() => {
+    let resizeFrame = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
+    const resizeChart = () => {
+      resizeFrame = 0;
       const width = container.clientWidth;
       const height = container.clientHeight;
-      if (width <= 0 || height <= 0) return;
+      if (width <= 0 || height <= 0 || (width === lastWidth && height === lastHeight)) return;
+      lastWidth = width;
+      lastHeight = height;
       try {
         chart.applyOptions({ width, height });
       } catch (error) {
         console.error('Unable to resize trading chart', error);
         setChartError('Chart is temporarily unavailable. Refresh to retry.');
       }
-    });
-    ro.observe(container);
+    };
+    const scheduleResize = () => {
+      if (resizeFrame === 0) resizeFrame = window.requestAnimationFrame(resizeChart);
+    };
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(scheduleResize) : null;
+    ro?.observe(container);
+    scheduleResize();
 
     return () => {
-      ro.disconnect();
+      ro?.disconnect();
+      if (resizeFrame !== 0) window.cancelAnimationFrame(resizeFrame);
       try {
         chart.unsubscribeCrosshairMove(onCrosshairMove);
         chart.remove();
