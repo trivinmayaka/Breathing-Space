@@ -549,11 +549,7 @@ function LandingPage({ onDemo, onReal }: { onDemo: () => void; onReal: () => voi
             </div>
           </div>
           <div className="border-t border-border/40 pt-6 text-[11px] text-muted-foreground/40 leading-relaxed max-w-4xl">
-            <strong className="text-muted-foreground/60">Risk Warning:</strong> {BRAND}{BRAND_SUB} is a simulated trading platform provided strictly for educational and practice purposes. 
-            All accounts use virtual funds only — no real money is deposited, traded, or at risk. 
-            Past simulated performance is not indicative of future results. 
-            CFDs are complex instruments and come with a high risk of losing money rapidly. 
-            Please ensure you fully understand the risks involved before trading real financial instruments.
+            {BRAND}{BRAND_SUB} uses simulated pricing and virtual balances for practice only; it does not provide broker execution or custody of funds.
           </div>
           <div className="mt-4 text-[11px] text-muted-foreground/30">
             © {new Date().getFullYear()} {BRAND}{BRAND_SUB}. All rights reserved.
