@@ -5,15 +5,7 @@ interface DepositModalProps {
   onClose: () => void;
 }
 
-const PAYMENT_METHODS = [
-  'M-Pesa',
-  'Bank Transfer',
-  'Cash',
-  'Airtel Money',
-  'Western Union',
-  'MoneyGram',
-  'Other',
-];
+const PAYMENT_METHODS = ['M-Pesa'];
 
 export function DepositModal({ onClose }: DepositModalProps) {
   const [form, setForm] = useState({
@@ -91,7 +83,7 @@ export function DepositModal({ onClose }: DepositModalProps) {
           /* Form */
           <form onSubmit={submit} className="px-6 py-5 flex flex-col gap-4">
             <p className="text-xs text-muted-foreground leading-relaxed">
-              Fill in your details and payment info. The admin will verify and credit your account.
+              M-Pesa is the only enabled funding method. Requests remain pending until payment verification; no reference alone credits an account.
             </p>
 
             {error && (
@@ -149,6 +141,10 @@ export function DepositModal({ onClose }: DepositModalProps) {
                 ))}
               </select>
             </Field>
+
+            <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[10px] leading-relaxed text-amber-200/80">
+              KES 1–1,000,000 request range · provider fees may apply · review and KYC/AML checks may delay processing.
+            </div>
 
             <Field label="Payment Reference / Transaction ID">
               <input

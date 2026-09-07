@@ -32,7 +32,7 @@ interface FundingRecord {
 }
 interface WithdrawalRecord {
   id: number; amount: number; paymentMethod: string; accountDetails: string;
-  status: string; createdAt?: string; note?: string | null;
+  status: string; createdAt?: string; reviewedAt?: string | null; note?: string | null;
 }
 interface PriceData {
   bid: number; ask: number; mid: number; spreadPips: number;
@@ -48,9 +48,10 @@ const fmtPrice = (p: number, dec: number) => p.toFixed(dec);
 
 const PAIRS = [
   'EUR/USD','GBP/USD','USD/JPY','AUD/USD','USD/CAD','USD/CHF',
-  'NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','XAU/USD','BTC/USD',
-  'USD/MXN','USD/ZAR','EUR/CHF',
+  'NZD/USD','EUR/GBP','EUR/JPY','GBP/JPY','USD/MXN','USD/ZAR','EUR/CHF',
+  'XAU/USD','XAG/USD','USOIL','BTC/USD','ETH/USD',
 ];
+const INSTRUMENT_GROUPS = ['All', 'Major', 'Minor', 'Cross', 'Commodity', 'Crypto'] as const;
 
 // ─── Payment methods config ───────────────────────────────────────────────────
 const DEPOSIT_METHODS = [
@@ -63,95 +64,8 @@ const DEPOSIT_METHODS = [
       </svg>
     ),
     color: 'emerald',
-    instructions: [
-      { label: 'Paybill Number', value: '247247' },
-      { label: 'Account Number', value: 'TmFX' },
-    ],
-    hint: 'Go to M-Pesa → Lipa na M-Pesa → Paybill, enter the details above, then paste your confirmation code below.',
-    refPlaceholder: 'e.g. QGH3K2X1W4',
-  },
-  {
-    id: 'airtel',
-    label: 'Airtel Money',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 1.5H8.25A2.25 2.25 0 006 3.75v16.5a2.25 2.25 0 002.25 2.25h7.5A2.25 2.25 0 0018 20.25V3.75a2.25 2.25 0 00-2.25-2.25H13.5m-3 0V3h3V1.5m-3 0h3m-3 15.75h3" />
-      </svg>
-    ),
-    color: 'red',
-    instructions: [
-      { label: 'Send to Number', value: '+254 733 000 000' },
-      { label: 'Account Name', value: 'TmFX Ltd' },
-    ],
-    hint: 'Open Airtel Money → Send Money, enter the number above, then share the transaction ID.',
-    refPlaceholder: 'e.g. AT2024XXXXXXXX',
-  },
-  {
-    id: 'bank',
-    label: 'Bank Transfer',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z" />
-      </svg>
-    ),
-    color: 'blue',
-    instructions: [
-      { label: 'Bank', value: 'Equity Bank' },
-      { label: 'Account No.', value: '0123456789' },
-      { label: 'Account Name', value: 'TmFX Financial Ltd' },
-    ],
-    hint: 'Transfer via internet banking or at a branch. Use your name as the reference so we can match your payment.',
-    refPlaceholder: 'Bank reference or slip number',
-  },
-  {
-    id: 'crypto',
-    label: 'Crypto (USDT)',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M20.25 6.375c0 2.278-3.694 4.125-8.25 4.125S3.75 8.653 3.75 6.375m16.5 0c0-2.278-3.694-4.125-8.25-4.125S3.75 4.097 3.75 6.375m16.5 0v11.25c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125V6.375m16.5 5.625c0 2.278-3.694 4.125-8.25 4.125s-8.25-1.847-8.25-4.125" />
-      </svg>
-    ),
-    color: 'amber',
-    instructions: [
-      { label: 'Network', value: 'TRC20 (Tron)' },
-      { label: 'Wallet Address', value: 'TPNxwfLXEK9KKTLCS9WTASxkJWDjnqF3Qe' },
-    ],
-    hint: 'Send USDT via TRC20 only. Paste the transaction hash below after sending.',
-    refPlaceholder: 'Transaction hash (TxID)',
-  },
-  {
-    id: 'western',
-    label: 'Western Union',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-    color: 'yellow',
-    instructions: [
-      { label: 'Receiver Name', value: 'John Kamau' },
-      { label: 'Country', value: 'Kenya' },
-      { label: 'City', value: 'Nairobi' },
-    ],
-    hint: 'Visit a Western Union agent and send to the details above. Share the MTCN tracking number below.',
-    refPlaceholder: 'MTCN tracking number',
-  },
-  {
-    id: 'cash',
-    label: 'Cash',
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" className="w-6 h-6" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75" />
-      </svg>
-    ),
-    color: 'violet',
-    instructions: [
-      { label: 'Office', value: 'TmFX HQ, Nairobi CBD' },
-      { label: 'Hours', value: 'Mon–Fri, 9 AM – 5 PM' },
-      { label: 'Contact', value: '+254 700 000 000' },
-    ],
-    hint: 'Visit our office with cash. Our agent will issue a receipt and your account is credited same day.',
-    refPlaceholder: 'Receipt number from agent',
+    instructions: [{ label: 'Payment', value: 'Verified M-Pesa STK Push' }],
+    hint: 'Enter your own Kenyan M-Pesa number. The payment prompt is sent by IntaSend and your balance remains pending until provider confirmation.',
   },
 ] as const;
 
@@ -256,6 +170,11 @@ function DepositModal({ onClose }: { onClose: () => void }) {
             <div className="col-span-3 text-[11px] text-center text-muted-foreground/60 pt-1">
               Only verified M-Pesa STK Push deposits are currently available. Other funding methods are disabled until verified.
             </div>
+            <div className="col-span-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
+              <div className="font-bold uppercase tracking-wider text-amber-300">Funding review policy</div>
+              <div className="mt-1">KES 1–1,000,000 per request · no platform fee shown here · provider charges may apply · typically 0–5 minutes after confirmation.</div>
+              <div>Every request stays pending until IntaSend verification. KYC/AML checks and risk review may delay approval.</div>
+            </div>
           </div>
         )}
 
@@ -312,9 +231,9 @@ function DepositModal({ onClose }: { onClose: () => void }) {
               <p className="text-sm text-emerald-300 font-semibold">{credited}</p>
             </div>
              <p className="text-xs text-muted-foreground leading-relaxed max-w-xs">
-               {paymentPending
-                 ? 'Approve the prompt on your phone. Your trading balance will update automatically once IntaSend confirms the payment.'
-                 : 'Your balance has been updated. You can start trading immediately.'}
+                {paymentPending
+                  ? 'Approve the prompt on your phone. Your trading balance will update automatically once IntaSend confirms the payment.'
+                  : 'Your request is recorded and remains subject to payment verification and account review.'}
              </p>
             <button onClick={onClose} className="mt-2 px-8 h-11 bg-emerald-700 hover:bg-emerald-600 text-white font-bold rounded-xl text-sm transition-all w-full">
               Start Trading
@@ -671,6 +590,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
   const [alertMessage, setAlertMessage] = useState('');
   const marginAlertSent = useRef(false);
   const [search,    setSearch]    = useState('');
+  const [groupFilter, setGroupFilter] = useState<(typeof INSTRUMENT_GROUPS)[number]>('All');
 
   const loadAccount = useCallback(async () => {
     try {
@@ -794,7 +714,11 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
   const eq  = account?.equity ?? 0;
   const fp  = account?.floatingPnl ?? 0;
 
-  const filteredPairs = PAIRS.filter(p => p.toLowerCase().includes(search.toLowerCase()));
+  const filteredPairs = PAIRS.filter(pair => {
+    const matchesSearch = pair.toLowerCase().includes(search.toLowerCase());
+    const matchesGroup = groupFilter === 'All' || prices[pair]?.group === groupFilter;
+    return matchesSearch && matchesGroup;
+  });
 
   return (
     <div className="flex flex-col h-[100dvh] w-full bg-background overflow-hidden selection:bg-primary/30">
@@ -873,6 +797,19 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
           <div className="px-2 py-2 border-b border-border shrink-0">
             <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search…"
               className="w-full h-7 bg-[hsl(220_25%_10%)] border border-border rounded px-2 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:outline-none focus:ring-1 focus:ring-primary/40" />
+            <div className="flex gap-1 mt-2 overflow-x-auto">
+              {INSTRUMENT_GROUPS.map(group => (
+                <button
+                  key={group}
+                  onClick={() => setGroupFilter(group)}
+                  className={`shrink-0 rounded px-1.5 py-1 text-[8px] font-semibold ${
+                    groupFilter === group ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  {group}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="overflow-y-auto flex-1">
             {filteredPairs.map(pair => {
@@ -1101,6 +1038,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
                       <span>{record.paymentMethod}</span>
                       <span>{record.createdAt ? new Date(record.createdAt).toLocaleString() : '—'}</span>
                     </div>
+                     {record.reviewedAt && <div className="mt-1 text-[9px] text-muted-foreground/60">Reviewed {new Date(record.reviewedAt).toLocaleString()}</div>}
                     <div className="mt-1 text-[9px] text-muted-foreground/60 break-all">{record.paymentReference}</div>
                     {record.note && <div className="mt-1 text-[10px] text-amber-300/80">{record.note}</div>}
                   </div>
@@ -1118,11 +1056,12 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
                       <span>{record.paymentMethod} · {record.accountDetails}</span>
                       <span>{record.createdAt ? new Date(record.createdAt).toLocaleString() : '—'}</span>
                     </div>
+                     {record.reviewedAt && <div className="mt-1 text-[9px] text-muted-foreground/60">Reviewed {new Date(record.reviewedAt).toLocaleString()}</div>}
                     {record.note && <div className="mt-1 text-[10px] text-amber-300/80">{record.note}</div>}
                   </div>
                 ))}
                 <div className="text-[10px] leading-relaxed text-muted-foreground/60 border-t border-border/50 pt-3">
-                  M-Pesa deposits stay pending until the payment provider confirms them. The trading balance is an internal simulator ledger and does not represent custody of funds.
+                  M-Pesa deposits stay pending until the payment provider confirms them. Deposits have a KES 1–1,000,000 request range; provider fees may apply and confirmation is typically 0–5 minutes. Withdrawals are reviewed within 1 business day when eligible. KYC/AML checks, fraud review, market risk, and the internal simulator ledger apply; this balance does not represent verified custody or guaranteed execution.
                 </div>
               </div>
             )}

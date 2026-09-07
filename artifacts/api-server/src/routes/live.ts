@@ -6,7 +6,7 @@ import {
   db, liveTraders, forexPositions, forexClosedTrades, depositRequests, withdrawalRequests,
 } from "@workspace/db";
 import { desc as descOrder } from "drizzle-orm";
-import { getPriceSnapshot, getCandleData, calcPnl, INSTRUMENTS } from "../lib/forex-sim";
+import { getPriceSnapshot, getCandleData, calcPnl, calcMargin, INSTRUMENTS } from "../lib/forex-sim";
 import { randomUUID } from "crypto";
 import {
   initiateMpesaStkPush,
@@ -266,7 +266,10 @@ router.get("/live/account", requireLive, async (req, res) => {
     }
 
     const equity      = parseFloat((runningBalance + floatingPnl).toFixed(2));
-    const marginUsed  = openPositions.reduce((s, p) => s + (p.lots * 100_000) / Math.max(1, p.leverage), 0);
+    const marginUsed  = openPositions.reduce((s, p) => {
+      const pd = snap[p.pair];
+      return s + calcMargin(p.pair, p.lots, pd?.mid ?? p.currentPrice, p.leverage);
+    }, 0);
     const freeMargin  = parseFloat((equity - marginUsed).toFixed(2));
     const marginLevel = marginUsed > 0 ? parseFloat((equity / marginUsed * 100).toFixed(1)) : 0;
 

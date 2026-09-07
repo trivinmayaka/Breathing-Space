@@ -6,19 +6,28 @@ export interface Instrument {
   pip: number;
   dec: number;
   group: string;
+  contractSize: number;
 }
 
 export const INSTRUMENTS: Record<string, Instrument> = {
-  "EUR/USD": { base: 1.08542, spread: 0.00012, pip: 0.0001, dec: 5, group: "Major" },
-  "GBP/USD": { base: 1.27380, spread: 0.00015, pip: 0.0001, dec: 5, group: "Major" },
-  "USD/JPY": { base: 149.650, spread: 0.014,   pip: 0.01,   dec: 3, group: "Major" },
-  "AUD/USD": { base: 0.65320, spread: 0.00018, pip: 0.0001, dec: 5, group: "Major" },
-  "USD/CHF": { base: 0.89140, spread: 0.00015, pip: 0.0001, dec: 5, group: "Major" },
-  "USD/CAD": { base: 1.36420, spread: 0.00020, pip: 0.0001, dec: 5, group: "Major" },
-  "NZD/USD": { base: 0.60180, spread: 0.00022, pip: 0.0001, dec: 5, group: "Minor" },
-  "EUR/GBP": { base: 0.85260, spread: 0.00013, pip: 0.0001, dec: 5, group: "Minor" },
-  "EUR/JPY": { base: 162.430, spread: 0.016,   pip: 0.01,   dec: 3, group: "Cross" },
-  "GBP/JPY": { base: 189.120, spread: 0.020,   pip: 0.01,   dec: 3, group: "Cross" },
+  "EUR/USD": { base: 1.08542, spread: 0.00012, pip: 0.0001, dec: 5, group: "Major", contractSize: 100_000 },
+  "GBP/USD": { base: 1.27380, spread: 0.00015, pip: 0.0001, dec: 5, group: "Major", contractSize: 100_000 },
+  "USD/JPY": { base: 149.650, spread: 0.014,   pip: 0.01,   dec: 3, group: "Major", contractSize: 100_000 },
+  "AUD/USD": { base: 0.65320, spread: 0.00018, pip: 0.0001, dec: 5, group: "Major", contractSize: 100_000 },
+  "USD/CHF": { base: 0.89140, spread: 0.00015, pip: 0.0001, dec: 5, group: "Major", contractSize: 100_000 },
+  "USD/CAD": { base: 1.36420, spread: 0.00020, pip: 0.0001, dec: 5, group: "Major", contractSize: 100_000 },
+  "NZD/USD": { base: 0.60180, spread: 0.00022, pip: 0.0001, dec: 5, group: "Minor", contractSize: 100_000 },
+  "EUR/GBP": { base: 0.85260, spread: 0.00013, pip: 0.0001, dec: 5, group: "Minor", contractSize: 100_000 },
+  "EUR/JPY": { base: 162.430, spread: 0.016,   pip: 0.01,   dec: 3, group: "Cross", contractSize: 100_000 },
+  "GBP/JPY": { base: 189.120, spread: 0.020,   pip: 0.01,   dec: 3, group: "Cross", contractSize: 100_000 },
+  "USD/MXN": { base: 18.460, spread: 0.0040, pip: 0.001, dec: 3, group: "Minor", contractSize: 100_000 },
+  "USD/ZAR": { base: 18.220, spread: 0.0060, pip: 0.001, dec: 3, group: "Minor", contractSize: 100_000 },
+  "EUR/CHF": { base: 0.96220, spread: 0.00020, pip: 0.0001, dec: 5, group: "Cross", contractSize: 100_000 },
+  "XAU/USD": { base: 2341.50, spread: 0.35, pip: 0.01, dec: 2, group: "Commodity", contractSize: 100 },
+  "XAG/USD": { base: 28.70, spread: 0.04, pip: 0.01, dec: 2, group: "Commodity", contractSize: 5_000 },
+  "USOIL":   { base: 78.20, spread: 0.05, pip: 0.01, dec: 2, group: "Commodity", contractSize: 1_000 },
+  "BTC/USD": { base: 67420.0, spread: 12.0, pip: 1, dec: 2, group: "Crypto", contractSize: 1 },
+  "ETH/USD": { base: 3560.0, spread: 3.0, pip: 0.01, dec: 2, group: "Crypto", contractSize: 1 },
 };
 
 export interface CandleBar {
@@ -146,14 +155,29 @@ export function getCandleData(pairSlug: string, limit = 5000): CandleBar[] {
   return (_candles[pair] ?? []).slice(-limit);
 }
 
+export function getContractSize(pair: string): number {
+  return INSTRUMENTS[pair]?.contractSize ?? 100_000;
+}
+
+export function calcMargin(pair: string, lots: number, price: number, leverage: number): number {
+  const info = INSTRUMENTS[pair];
+  if (!info) return 0;
+  const notional = info.group === "Commodity" || info.group === "Crypto"
+    ? info.contractSize * lots * price
+    : info.contractSize * lots;
+  return notional / Math.max(1, leverage);
+}
+
 export function calcPnl(
   pair: string, action: string, lots: number, openPrice: number, currentPrice: number,
 ): number {
-  const unit = 100_000 * lots;
+  const info = INSTRUMENTS[pair];
+  const unit = (info?.contractSize ?? 100_000) * lots;
   const diff = action === "BUY" ? currentPrice - openPrice : openPrice - currentPrice;
-  return parseFloat(
-    pair.includes("JPY")
-      ? (unit * diff / currentPrice).toFixed(2)
-      : (unit * diff).toFixed(2),
-  );
+  const pnl = info?.group === "Major" || info?.group === "Minor" || info?.group === "Cross"
+    ? pair.includes("JPY")
+      ? unit * diff / currentPrice
+      : unit * diff
+    : unit * diff;
+  return parseFloat(pnl.toFixed(2));
 }

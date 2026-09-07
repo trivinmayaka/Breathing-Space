@@ -32,6 +32,11 @@ router.post("/deposits", async (req, res) => {
   if (isNaN(amt) || amt <= 0 || amt > 1_000_000) {
     return void res.status(400).json({ error: "Enter a valid amount (1 – 1,000,000)." });
   }
+  if (paymentMethod.trim().toLowerCase() !== "m-pesa") {
+    return void res.status(422).json({
+      error: "This funding method is not available yet. Deposits currently use verified M-Pesa only.",
+    });
+  }
 
   await db.insert(depositRequests).values({
     sessionId: sid,

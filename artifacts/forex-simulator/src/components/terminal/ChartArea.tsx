@@ -32,11 +32,26 @@ type SeriesLike = { setData: (data: unknown[]) => void };
 
 function aggregateCandles(candles: Candle[] | undefined, timeframe: Timeframe): Candle[] {
   if (!candles?.length) return [];
+  const validCandles = candles
+    .filter(candle =>
+      [candle.time, candle.open, candle.high, candle.low, candle.close].every(Number.isFinite) &&
+      candle.time > 0 &&
+      candle.high >= Math.max(candle.open, candle.close) &&
+      candle.low <= Math.min(candle.open, candle.close),
+    )
+    .reduce<Candle[]>((result, candle) => {
+      const previous = result[result.length - 1];
+      if (previous?.time === candle.time) result[result.length - 1] = candle;
+      else result.push(candle);
+      return result;
+    }, [])
+    .sort((a, b) => a.time - b.time);
+  if (!validCandles.length) return [];
   const seconds = TIMEFRAMES.find(t => t.value === timeframe)?.seconds ?? 60;
-  if (seconds === 60) return candles;
+  if (seconds === 60) return validCandles;
 
   const grouped = new Map<number, Candle>();
-  for (const candle of candles) {
+  for (const candle of validCandles) {
     const bucket = Math.floor(candle.time / seconds) * seconds;
     const existing = grouped.get(bucket);
     if (!existing) {
@@ -103,6 +118,7 @@ export function ChartArea({ selectedPair, maxLots = 10 }: ChartAreaProps) {
   const [chartType, setChartType] = useState<ChartType>('candles');
   const [indicator, setIndicator] = useState<Indicator>('none');
   const [crosshairCandle, setCrosshairCandle] = useState<Candle | null>(null);
+  const [chartError, setChartError] = useState('');
 
   const { data: rawCandles } = useGetForexCandles(pairSlug, {
     query: {
@@ -123,9 +139,12 @@ export function ChartArea({ selectedPair, maxLots = 10 }: ChartAreaProps) {
   const priceData = prices?.[selectedPair];
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    const container = chartContainerRef.current;
+    if (!container) return;
 
-    const chart = createChart(chartContainerRef.current, {
+    let chart: IChartApi;
+    try {
+      chart = createChart(container, {
       layout: {
         background: { type: ColorType.Solid, color: 'transparent' },
         textColor: '#718096',
@@ -147,8 +166,14 @@ export function ChartArea({ selectedPair, maxLots = 10 }: ChartAreaProps) {
         secondsVisible: false,
       },
       rightPriceScale: { borderColor: 'rgba(255,255,255,0.06)' },
-    });
+      });
+    } catch (error) {
+      console.error('Unable to create trading chart', error);
+      setChartError('Chart is temporarily unavailable. Refresh to retry.');
+      return;
+    }
 
+    setChartError('');
     chartRef.current = chart;
     const seriesOptions = {
       upColor: '#22c55e',
@@ -174,27 +199,48 @@ export function ChartArea({ selectedPair, maxLots = 10 }: ChartAreaProps) {
       seriesRef.current = crosshairSeriesRef.current as SeriesLike;
     }
     const onCrosshairMove = (param: any) => {
-      const data = crosshairSeriesRef.current ? param.seriesData.get(crosshairSeriesRef.current) : undefined;
-      if (data && 'open' in data) setCrosshairCandle(data as Candle);
-      else if (data && 'value' in data) setCrosshairCandle({ time: data.time, open: data.value, high: data.value, low: data.value, close: data.value, volume: 0 });
-      else setCrosshairCandle(null);
+      try {
+        const data = crosshairSeriesRef.current && param?.seriesData
+          ? param.seriesData.get(crosshairSeriesRef.current)
+          : undefined;
+        if (data && 'open' in data) setCrosshairCandle(data as Candle);
+        else if (data && 'value' in data) {
+          setCrosshairCandle({
+            time: data.time,
+            open: data.value,
+            high: data.value,
+            low: data.value,
+            close: data.value,
+            volume: 0,
+          });
+        } else setCrosshairCandle(null);
+      } catch {
+        setCrosshairCandle(null);
+      }
     };
     chart.subscribeCrosshairMove(onCrosshairMove);
 
     const ro = new ResizeObserver(() => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+      if (width <= 0 || height <= 0) return;
+      try {
+        chart.applyOptions({ width, height });
+      } catch (error) {
+        console.error('Unable to resize trading chart', error);
+        setChartError('Chart is temporarily unavailable. Refresh to retry.');
       }
     });
-    ro.observe(chartContainerRef.current);
+    ro.observe(container);
 
     return () => {
       ro.disconnect();
-      chart.unsubscribeCrosshairMove(onCrosshairMove);
-      chart.remove();
+      try {
+        chart.unsubscribeCrosshairMove(onCrosshairMove);
+        chart.remove();
+      } catch (error) {
+        console.error('Unable to clean up trading chart', error);
+      }
       chartRef.current = null;
       seriesRef.current = null;
       crosshairSeriesRef.current = null;
@@ -207,35 +253,40 @@ export function ChartArea({ selectedPair, maxLots = 10 }: ChartAreaProps) {
     const chart = chartRef.current;
     if (!chart || !seriesRef.current) return;
 
-    if (chartType === 'line') {
-      seriesRef.current.setData(candles.map(candle => ({ time: candle.time, value: candle.close })));
-    } else {
-      seriesRef.current.setData(candles);
-    }
-    chart.timeScale().fitContent();
+    try {
+      if (chartType === 'line') {
+        seriesRef.current.setData(candles.map(candle => ({ time: candle.time, value: candle.close })));
+      } else {
+        seriesRef.current.setData(candles);
+      }
+      chart.timeScale().fitContent();
 
-    if (indicatorRef.current) {
-      chart.removeSeries(indicatorRef.current as never);
-      indicatorRef.current = null;
-    }
-    if (indicator === 'sma' || indicator === 'ema') {
-      indicatorRef.current = chart.addSeries(LineSeries, {
-        color: indicator === 'sma' ? '#f59e0b' : '#a78bfa',
-        lineWidth: 2,
-        priceLineVisible: false,
-        lastValueVisible: false,
-      }) as unknown as SeriesLike;
-      indicatorRef.current.setData(movingAverage(candles, indicator === 'sma' ? 20 : 50, indicator === 'ema'));
-    } else if (indicator === 'rsi') {
-      chart.priceScale('rsi').applyOptions({ scaleMargins: { top: 0.76, bottom: 0.05 } });
-      indicatorRef.current = chart.addSeries(LineSeries, {
-        color: '#f472b6',
-        lineWidth: 2,
-        priceScaleId: 'rsi',
-        priceLineVisible: false,
-        lastValueVisible: true,
-      }) as unknown as SeriesLike;
-      indicatorRef.current.setData(relativeStrengthIndex(candles));
+      if (indicatorRef.current) {
+        chart.removeSeries(indicatorRef.current as never);
+        indicatorRef.current = null;
+      }
+      if (indicator === 'sma' || indicator === 'ema') {
+        indicatorRef.current = chart.addSeries(LineSeries, {
+          color: indicator === 'sma' ? '#f59e0b' : '#a78bfa',
+          lineWidth: 2,
+          priceLineVisible: false,
+          lastValueVisible: false,
+        }) as unknown as SeriesLike;
+        indicatorRef.current.setData(movingAverage(candles, indicator === 'sma' ? 20 : 50, indicator === 'ema'));
+      } else if (indicator === 'rsi') {
+        chart.priceScale('rsi').applyOptions({ scaleMargins: { top: 0.76, bottom: 0.05 } });
+        indicatorRef.current = chart.addSeries(LineSeries, {
+          color: '#f472b6',
+          lineWidth: 2,
+          priceScaleId: 'rsi',
+          priceLineVisible: false,
+          lastValueVisible: true,
+        }) as unknown as SeriesLike;
+        indicatorRef.current.setData(relativeStrengthIndex(candles));
+      }
+    } catch (error) {
+      console.error('Unable to render trading candles', error);
+      setChartError('Chart data could not be rendered. Refresh to retry.');
     }
   }, [candles, chartType, indicator]);
 
@@ -319,7 +370,13 @@ export function ChartArea({ selectedPair, maxLots = 10 }: ChartAreaProps) {
       </div>
 
       {/* Chart */}
-      <div className="flex-1 relative min-h-0" ref={chartContainerRef} />
+      <div className="flex-1 relative min-h-0" ref={chartContainerRef}>
+        {chartError && (
+          <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-xs text-amber-300/80">
+            {chartError}
+          </div>
+        )}
+      </div>
 
       {/* Order panel */}
       <div className="flex-shrink-0 border-t border-border bg-panel flex items-center gap-4 px-4 py-3 flex-wrap">
