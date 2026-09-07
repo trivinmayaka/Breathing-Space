@@ -32,8 +32,8 @@ export function AccountMetrics() {
     : marginLevel > 200 ? 'text-profit' : marginLevel > 100 ? 'text-[#f0b429]' : 'text-loss';
 
   return (
-    <div className="flex-shrink-0 flex items-center justify-between px-5 h-10 border-b border-border bg-panel text-[11px] font-medium">
-      <div className="flex items-center divide-x divide-border">
+    <div className="flex-shrink-0 flex items-center justify-between overflow-x-auto px-5 h-10 border-b border-border bg-panel text-[11px] font-medium">
+      <div className="flex items-center divide-x divide-border min-w-max">
         <MetricCell label="Balance"     value={fmt(account?.balance)} />
         <MetricCell label="Equity"      value={fmt(account?.equity)} />
         <MetricCell label="Floating P/L" value={pnlStr} valueClass={`font-mono font-bold ${pnlClass}`} />

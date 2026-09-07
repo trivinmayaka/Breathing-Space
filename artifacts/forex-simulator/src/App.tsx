@@ -607,7 +607,7 @@ function AdminHub({ onDashboard, onRealAccount, onLogout }: {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <button onClick={onRealAccount} className="group card-panel p-7 text-left hover:border-emerald-600/40 hover:bg-emerald-950/10 transition-all">
               <div className="flex items-center gap-3 mb-5">
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">

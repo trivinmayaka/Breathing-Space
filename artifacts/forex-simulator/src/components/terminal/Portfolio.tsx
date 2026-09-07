@@ -11,7 +11,7 @@ export function Portfolio() {
   const [tab, setTab] = useState<'positions' | 'history'>('positions');
 
   return (
-    <div className="w-[280px] flex-shrink-0 flex flex-col h-full bg-panel border-l border-border">
+    <div className="w-full lg:w-[280px] h-[240px] lg:h-full flex-shrink-0 flex flex-col bg-panel border-t lg:border-t-0 lg:border-l border-border">
       {/* Tab bar */}
       <div className="flex border-b border-border h-9 shrink-0">
         <TabBtn label="Positions" active={tab === 'positions'} onClick={() => setTab('positions')} />

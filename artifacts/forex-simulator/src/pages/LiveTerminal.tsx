@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { ChartArea } from '../components/terminal/ChartArea';
+import { MobileMarketPicker } from '../components/terminal/MobileMarketPicker';
 
 const API = '/api';
 
@@ -909,6 +910,7 @@ export function LiveTerminal({ onLogout }: LiveTerminalProps) {
       </div>
 
       {/* ── Body ── */}
+      <MobileMarketPicker selectedPair={selPair} onSelectPair={setSelPair} />
       <div className="flex flex-1 min-h-0 overflow-hidden flex-col lg:flex-row">
 
         {/* ── Watchlist ── */}

@@ -5,14 +5,15 @@ import type { PriceData } from '@workspace/api-client-react';
 interface WatchlistProps {
   selectedPair: string;
   onSelectPair: (pair: string) => void;
+  className?: string;
 }
 
-export function Watchlist({ selectedPair, onSelectPair }: WatchlistProps) {
+export function Watchlist({ selectedPair, onSelectPair, className = '' }: WatchlistProps) {
   const { data: prices } = useGetForexPrices({ query: { refetchInterval: 1500, queryKey: getGetForexPricesQueryKey() } });
 
   if (!prices) {
     return (
-      <div className="w-[200px] border-r border-border bg-panel flex items-center justify-center">
+      <div className={`${className} w-[200px] border-r border-border bg-panel flex items-center justify-center`}>
         <div className="text-[10px] text-muted-foreground/50 uppercase tracking-widest">Connecting…</div>
       </div>
     );
@@ -25,7 +26,7 @@ export function Watchlist({ selectedPair, onSelectPair }: WatchlistProps) {
   });
 
   return (
-    <div className="w-[200px] flex-shrink-0 border-r border-border bg-panel flex flex-col h-full">
+    <div className={`${className} w-[200px] flex-shrink-0 border-r border-border bg-panel flex flex-col h-full`}>
       {/* Header */}
       <div className="h-9 border-b border-border flex items-center px-3 gap-2 shrink-0">
         <svg className="w-3.5 h-3.5 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -35,7 +36,7 @@ export function Watchlist({ selectedPair, onSelectPair }: WatchlistProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto">
-        {['Major', 'Minor', 'Cross'].map(group => {
+        {['Major', 'Minor', 'Cross', 'Commodity', 'Crypto'].map(group => {
           if (!groups[group]) return null;
           return (
             <div key={group}>

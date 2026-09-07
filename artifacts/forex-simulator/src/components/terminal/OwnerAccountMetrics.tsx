@@ -66,8 +66,8 @@ export function OwnerAccountMetrics() {
     : marginLevel > 200 ? 'text-profit' : marginLevel > 100 ? 'text-[#f0b429]' : 'text-loss';
 
   return (
-    <div className="flex-shrink-0 flex items-center justify-between px-5 h-10 border-b border-emerald-900/30 bg-emerald-950/10 text-[11px] font-medium">
-      <div className="flex items-center divide-x divide-border">
+    <div className="flex-shrink-0 flex items-center justify-between overflow-x-auto px-5 h-10 border-b border-emerald-900/30 bg-emerald-950/10 text-[11px] font-medium">
+      <div className="flex items-center divide-x divide-border min-w-max">
         {/* Editable balance cell */}
         <div className="flex items-baseline gap-2 pr-4">
           <span className="text-[10px] text-muted-foreground/60 uppercase tracking-wider">Balance</span>
