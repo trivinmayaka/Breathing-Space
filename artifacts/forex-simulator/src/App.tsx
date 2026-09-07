@@ -292,15 +292,15 @@ function LandingPage({ onDemo, onReal }: { onDemo: () => void; onReal: () => voi
                     Live
                   </div>
                 </div>
-                <h2 className="text-xl font-black text-foreground mb-1">Real Account</h2>
-                <p className="text-sm text-muted-foreground mb-5">Live trading terminal with full owner controls and unlimited access.</p>
+                <h2 className="text-xl font-black text-foreground mb-1">Live Account</h2>
+                <p className="text-sm text-muted-foreground mb-5">Professional trading terminal with advanced market tools and secure account access.</p>
 
                 <div className="space-y-2.5 mb-6">
                   {[
-                    ['Starting Balance', '$100,000 (adjustable)'],
-                    ['Lot Size', 'Unlimited'],
-                    ['Controls', 'Full owner access'],
-                    ['Admin Panel', 'Manage all accounts'],
+                    ['Account Setup', 'Configured for your account'],
+                    ['Position Sizing', 'Flexible volume options'],
+                    ['Trading Tools', 'Advanced charting'],
+                    ['Access', 'Secure trader login'],
                   ].map(([k, v]) => (
                     <div key={k} className="flex items-center justify-between text-sm">
                       <span className="text-muted-foreground">{k}</span>
@@ -311,16 +311,16 @@ function LandingPage({ onDemo, onReal }: { onDemo: () => void; onReal: () => voi
 
                 <button className="w-full h-12 rounded-xl bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-sm transition-all flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-emerald-900/40">
                   <span className="live-dot" style={{ width: 6, height: 6 }} />
-                  Access Real Account
+                   Open Live Account
                 </button>
-                <p className="text-center text-[11px] text-muted-foreground/60 mt-3">Owner authentication required</p>
+                <p className="text-center text-[11px] text-muted-foreground/60 mt-3">Account verification required</p>
               </div>
             </div>
           </div>
 
           {/* Trust badges */}
           <div className="flex flex-wrap items-center justify-center gap-8 text-[11px] text-muted-foreground/60 uppercase tracking-widest font-semibold">
-            {['256-bit SSL Encryption', '24/5 Market Access', '50+ Instruments', 'Real-time Execution', 'No Hidden Fees'].map(b => (
+            {['256-bit SSL Encryption', '24/5 Market Access', '50+ Instruments', 'Continuous Price Feed', 'No Hidden Fees'].map(b => (
               <div key={b} className="flex items-center gap-2">
                 <svg className="w-3.5 h-3.5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/></svg>
                 {b}
