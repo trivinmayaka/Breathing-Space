@@ -68,6 +68,8 @@ const DEPOSIT_METHODS = [
     instructions: [{ label: 'Payment', value: 'Verified M-Pesa STK Push' }],
     hint: 'Enter your own Kenyan M-Pesa number. The payment prompt is sent by IntaSend and your balance remains pending until provider confirmation.',
     disabled: false,
+    badge: 'Available now',
+    summary: 'STK Push · provider verified',
   },
   {
     id: 'airtel',
@@ -107,6 +109,8 @@ const DEPOSIT_METHODS = [
     ],
     hint: 'Send ETH on Ethereum mainnet only. Submit the on-chain transaction hash afterward. Crypto deposits remain pending until an admin verifies the transaction; wrong-network transfers may be unrecoverable.',
     disabled: false,
+    badge: 'Available now',
+    summary: 'Manual review · Ethereum',
   },
   {
     id: 'western',
@@ -150,10 +154,21 @@ function DepositModal({ onClose }: { onClose: () => void }) {
   const [err, setErr]           = useState('');
   const [credited, setCredited] = useState('');
   const [paymentPending, setPaymentPending] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState(false);
 
   const method = DEPOSIT_METHODS.find(m => m.id === methodId);
 
   function pick(id: MethodId) { setMethodId(id); setErr(''); setStep('form'); }
+
+  async function copyAddress(address: string) {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(true);
+      window.setTimeout(() => setCopiedAddress(false), 1800);
+    } catch {
+      setErr('Copy failed. Select and copy the wallet address manually.');
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -206,29 +221,44 @@ function DepositModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {step === 'pick' && (
-          <div className="p-5 grid grid-cols-3 gap-3">
+           <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+             <div className="sm:col-span-3 flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2">
+               <div>
+                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-300">Enabled funding rails</p>
+                 <p className="text-[11px] text-muted-foreground/70">Choose a verified route and keep your reference for review.</p>
+               </div>
+               <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-300">2 active</span>
+             </div>
             {DEPOSIT_METHODS.map(m => {
               const cls = colorMap[m.color] ?? colorMap.emerald;
               return (
                 <button key={m.id} onClick={() => !m.disabled && pick(m.id)} disabled={m.disabled}
-                  className={`relative flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all ${
+                   className={`relative flex min-h-[142px] flex-col items-center justify-center gap-2 rounded-xl border p-4 text-center transition-all ${
                     m.disabled
                       ? 'border-border/60 bg-white/[0.02] text-muted-foreground/50 cursor-not-allowed'
-                      : `hover:scale-[1.03] active:scale-100 ${cls}`
+                       : `shadow-[0_0_24px_rgba(16,185,129,0.08)] hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(16,185,129,0.16)] active:translate-y-0 ${cls}`
                   }`}>
+                   {!m.disabled && (
+                     <span className="absolute right-2 top-2 flex items-center gap-1 rounded-full border border-emerald-300/25 bg-emerald-300/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-300">
+                       <span className="h-1.5 w-1.5 rounded-full bg-emerald-300 shadow-[0_0_6px_rgba(110,231,183,0.9)]" />Live
+                     </span>
+                   )}
                   <span>{m.icon}</span>
-                  <span className={`text-xs font-bold ${m.disabled ? 'text-muted-foreground/60' : 'text-foreground'}`}>{m.label}</span>
-                  {m.disabled && <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50">Unavailable</span>}
+                   <span className={`text-xs font-bold ${m.disabled ? 'text-muted-foreground/60' : 'text-foreground'}`}>{m.label}</span>
+                   <span className={`text-[9px] ${m.disabled ? 'text-muted-foreground/40' : 'text-foreground/60'}`}>
+                     {m.disabled ? 'Unavailable' : m.summary}
+                   </span>
+                   {!m.disabled && <span className="text-[9px] font-semibold uppercase tracking-wider text-emerald-300/80">{m.badge}</span>}
                 </button>
               );
             })}
-            <div className="col-span-3 text-[11px] text-center text-muted-foreground/60 pt-1">
+             <div className="sm:col-span-3 text-[11px] text-center text-muted-foreground/60 pt-1">
               M-Pesa STK Push and Ethereum crypto manual review are available. Other methods remain disabled until verified.
             </div>
-            <div className="col-span-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
+             <div className="sm:col-span-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
               <div className="font-bold uppercase tracking-wider text-amber-300">Funding review policy</div>
               <div className="mt-1">KES 1–1,000,000 per request · no platform fee shown here · provider charges may apply · typically 0–5 minutes after confirmation.</div>
-              <div>Every request stays pending until IntaSend verification. KYC/AML checks and risk review may delay approval.</div>
+               <div>Every request stays pending until provider confirmation or admin review. KYC/AML checks and risk review may delay approval.</div>
             </div>
           </div>
         )}
@@ -239,9 +269,22 @@ function DepositModal({ onClose }: { onClose: () => void }) {
               <p className="text-[11px] font-bold uppercase tracking-widest opacity-70">Send payment to</p>
               <div className="space-y-1.5">
                 {method.instructions.map(({ label, value }) => (
-                  <div key={label} className="flex items-start justify-between gap-3">
+                   <div key={label} className="flex items-start justify-between gap-3">
                     <span className="text-xs text-foreground/60 shrink-0">{label}</span>
-                    <span className="text-xs font-mono font-bold text-foreground text-right break-all">{value}</span>
+                     {label === 'Wallet' ? (
+                       <span className="flex min-w-0 items-start justify-end gap-2 text-right">
+                         <span className="text-xs font-mono font-bold text-foreground break-all">{value}</span>
+                         <button
+                           type="button"
+                           onClick={() => copyAddress(value)}
+                           className="shrink-0 rounded border border-amber-300/30 px-1.5 py-0.5 text-[9px] font-semibold text-amber-200 hover:bg-amber-200/10"
+                         >
+                           {copiedAddress ? 'Copied' : 'Copy'}
+                         </button>
+                       </span>
+                     ) : (
+                       <span className="text-xs font-mono font-bold text-foreground text-right break-all">{value}</span>
+                     )}
                   </div>
                 ))}
               </div>
