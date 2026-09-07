@@ -108,6 +108,29 @@
   .bg-surface { background-color: hsl(220 22% 10%); }
   .bg-raised  { background-color: hsl(220 20% 13%); }
 
+  /* Owner workspace atmosphere */
+  .owner-portal-bg {
+    isolation: isolate;
+    position: relative;
+    background:
+      radial-gradient(ellipse at 8% 0%, rgb(16 185 129 / 0.13), transparent 30rem),
+      radial-gradient(ellipse at 92% 4%, rgb(37 99 235 / 0.14), transparent 34rem),
+      linear-gradient(135deg, hsl(220 30% 5%) 0%, hsl(220 29% 7%) 52%, hsl(220 32% 5%) 100%);
+  }
+  .owner-portal-bg::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.16;
+    background-image:
+      linear-gradient(rgb(148 163 184 / 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(148 163 184 / 0.08) 1px, transparent 1px);
+    background-size: 42px 42px;
+    mask-image: linear-gradient(to bottom, black, transparent 86%);
+  }
+
   /* Brand gradient */
   .brand-gradient {
     background: linear-gradient(135deg, hsl(215,90%,55%) 0%, hsl(185,80%,45%) 100%);

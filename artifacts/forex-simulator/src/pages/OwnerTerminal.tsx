@@ -14,7 +14,7 @@ export function OwnerTerminal({ onLogout, onGoAdmin }: OwnerTerminalProps) {
   const [selectedPair, setSelectedPair] = useState('EUR/USD');
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-background overflow-hidden selection:bg-emerald-500/20">
+    <div className="owner-portal-bg flex flex-col h-[100dvh] w-full overflow-hidden selection:bg-emerald-500/20">
       <OwnerBanner onGoAdmin={onGoAdmin} onLogout={onLogout} />
       <OwnerAccountMetrics />
       <div className="flex flex-1 min-h-0 overflow-hidden">

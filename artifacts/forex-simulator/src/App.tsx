@@ -565,7 +565,7 @@ function AdminHub({ onDashboard, onRealAccount, onLogout }: {
   onDashboard: () => void; onRealAccount: () => void; onLogout: () => void;
 }) {
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div className="owner-portal-bg min-h-screen flex flex-col">
       <header className="relative flex items-center justify-between px-4 sm:px-6 h-[72px] border-b border-emerald-500/15 bg-panel overflow-hidden">
         <div className="absolute inset-0 pointer-events-none bg-[radial-gradient(ellipse_at_10%_0%,rgba(16,185,129,0.1),transparent_34%)]" />
         <div className="relative flex items-center gap-4">
