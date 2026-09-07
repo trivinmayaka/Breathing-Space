@@ -142,6 +142,10 @@ export function DepositModal({ onClose }: DepositModalProps) {
               </select>
             </Field>
 
+            <div className="rounded-lg border border-border/60 bg-white/[0.02] px-3 py-2 text-[10px] leading-relaxed text-muted-foreground/70">
+              <span className="font-semibold text-muted-foreground">Other methods shown for visibility:</span> Airtel Money, bank transfer, card payment, crypto, Western Union — unavailable until verified.
+            </div>
+
             <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[10px] leading-relaxed text-amber-200/80">
               KES 1–1,000,000 request range · provider fees may apply · review and KYC/AML checks may delay processing.
             </div>

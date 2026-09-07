@@ -66,6 +66,52 @@ const DEPOSIT_METHODS = [
     color: 'emerald',
     instructions: [{ label: 'Payment', value: 'Verified M-Pesa STK Push' }],
     hint: 'Enter your own Kenyan M-Pesa number. The payment prompt is sent by IntaSend and your balance remains pending until provider confirmation.',
+    disabled: false,
+  },
+  {
+    id: 'airtel',
+    label: 'Airtel Money',
+    icon: <span className="text-lg font-black">A</span>,
+    color: 'red',
+    instructions: [],
+    hint: 'Unavailable until a verified Airtel Money collection account is connected.',
+    disabled: true,
+  },
+  {
+    id: 'bank',
+    label: 'Bank transfer',
+    icon: <span className="text-lg font-black">▣</span>,
+    color: 'blue',
+    instructions: [],
+    hint: 'Unavailable until verified bank settlement details are configured.',
+    disabled: true,
+  },
+  {
+    id: 'card',
+    label: 'Card payment',
+    icon: <span className="text-lg font-black">▤</span>,
+    color: 'violet',
+    instructions: [],
+    hint: 'Unavailable until a verified card-payment provider is connected.',
+    disabled: true,
+  },
+  {
+    id: 'crypto',
+    label: 'Crypto',
+    icon: <span className="text-lg font-black">₿</span>,
+    color: 'amber',
+    instructions: [],
+    hint: 'Unavailable until a verified custody and wallet workflow is configured.',
+    disabled: true,
+  },
+  {
+    id: 'western',
+    label: 'Western Union',
+    icon: <span className="text-lg font-black">WU</span>,
+    color: 'yellow',
+    instructions: [],
+    hint: 'Unavailable until a verified remittance workflow is configured.',
+    disabled: true,
   },
 ] as const;
 
@@ -157,18 +203,23 @@ function DepositModal({ onClose }: { onClose: () => void }) {
 
         {step === 'pick' && (
           <div className="p-5 grid grid-cols-3 gap-3">
-            {DEPOSIT_METHODS.filter(m => m.id === 'mpesa').map(m => {
+            {DEPOSIT_METHODS.map(m => {
               const cls = colorMap[m.color] ?? colorMap.emerald;
               return (
-                <button key={m.id} onClick={() => pick(m.id)}
-                  className={`flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all hover:scale-[1.03] active:scale-100 ${cls}`}>
+                <button key={m.id} onClick={() => !m.disabled && pick(m.id)} disabled={m.disabled}
+                  className={`relative flex flex-col items-center gap-2.5 p-4 rounded-xl border transition-all ${
+                    m.disabled
+                      ? 'border-border/60 bg-white/[0.02] text-muted-foreground/50 cursor-not-allowed'
+                      : `hover:scale-[1.03] active:scale-100 ${cls}`
+                  }`}>
                   <span>{m.icon}</span>
-                  <span className="text-xs font-bold text-foreground">{m.label}</span>
+                  <span className={`text-xs font-bold ${m.disabled ? 'text-muted-foreground/60' : 'text-foreground'}`}>{m.label}</span>
+                  {m.disabled && <span className="text-[9px] uppercase tracking-wider text-muted-foreground/50">Unavailable</span>}
                 </button>
               );
             })}
             <div className="col-span-3 text-[11px] text-center text-muted-foreground/60 pt-1">
-              Only verified M-Pesa STK Push deposits are currently available. Other funding methods are disabled until verified.
+              M-Pesa STK Push is the only selectable method. Other methods are shown for visibility but remain disabled until verified.
             </div>
             <div className="col-span-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
               <div className="font-bold uppercase tracking-wider text-amber-300">Funding review policy</div>
