@@ -123,6 +123,8 @@ const DEPOSIT_METHODS = [
   },
 ] as const;
 
+const AVAILABLE_DEPOSIT_METHODS = DEPOSIT_METHODS.filter(method => !method.disabled);
+
 type MethodId = typeof DEPOSIT_METHODS[number]['id'];
 
 const colorMap: Record<string, string> = {
@@ -221,15 +223,15 @@ function DepositModal({ onClose }: { onClose: () => void }) {
         </div>
 
         {step === 'pick' && (
-           <div className="p-5 grid grid-cols-1 sm:grid-cols-3 gap-3">
+           <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-3">
              <div className="sm:col-span-3 flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/[0.06] px-3 py-2">
                <div>
                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emerald-300">Enabled funding rails</p>
                  <p className="text-[11px] text-muted-foreground/70">Choose a verified route and keep your reference for review.</p>
                </div>
-               <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-300">2 active</span>
+                <span className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[9px] font-bold uppercase tracking-wider text-emerald-300">{AVAILABLE_DEPOSIT_METHODS.length} active</span>
              </div>
-            {DEPOSIT_METHODS.map(m => {
+             {AVAILABLE_DEPOSIT_METHODS.map(m => {
               const cls = colorMap[m.color] ?? colorMap.emerald;
               return (
                 <button key={m.id} onClick={() => !m.disabled && pick(m.id)} disabled={m.disabled}
@@ -252,10 +254,10 @@ function DepositModal({ onClose }: { onClose: () => void }) {
                 </button>
               );
             })}
-             <div className="sm:col-span-3 text-[11px] text-center text-muted-foreground/60 pt-1">
-              M-Pesa STK Push and Ethereum crypto manual review are available. Other methods remain disabled until verified.
+               <div className="sm:col-span-2 text-[11px] text-center text-muted-foreground/60 pt-1">
+               Select a funding route to continue.
             </div>
-             <div className="sm:col-span-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
+              <div className="sm:col-span-2 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3 text-[10px] leading-relaxed text-amber-200/80">
               <div className="font-bold uppercase tracking-wider text-amber-300">Funding review policy</div>
               <div className="mt-1">KES 1–1,000,000 per request · no platform fee shown here · provider charges may apply · typically 0–5 minutes after confirmation.</div>
                <div>Every request stays pending until provider confirmation or admin review. KYC/AML checks and risk review may delay approval.</div>
